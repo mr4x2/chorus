@@ -51,6 +51,7 @@ type Config struct {
 	RClone *rclone.Config  `yaml:"rclone,omitempty"`
 	Lock   *Lock           `yaml:"lock,omitempty"`
 	Worker *handler.Config `yaml:"worker,omitempty"`
+    Database *Database     `yaml:"database,omitempty"`
 }
 
 type Lock struct {
@@ -80,6 +81,24 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("app config: empty Lock config")
 	}
 	return nil
+}
+
+type Database struct {
+    // Either full DSN or individual fields below
+    DSN string `yaml:"dsn"`
+
+    Host     string        `yaml:"host"`
+    Port     int           `yaml:"port"`
+    User     string        `yaml:"user"`
+    Password string        `yaml:"password"`
+    Name     string        `yaml:"name"`
+    SSLMode  string        `yaml:"sslmode"`
+
+    MaxOpenConns    int           `yaml:"maxOpenConns"`
+    MaxIdleConns    int           `yaml:"maxIdleConns"`
+    ConnMaxLifetime time.Duration `yaml:"connMaxLifetime"`
+    ConnMaxIdleTime time.Duration `yaml:"connMaxIdleTime"`
+    LogLevel        string        `yaml:"logLevel"`
 }
 
 func GetConfig(src ...config.Src) (*Config, error) {
