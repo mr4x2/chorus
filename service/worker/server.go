@@ -30,6 +30,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/clyso/chorus/pkg/api"
+	"github.com/clyso/chorus/pkg/db"
 	"github.com/clyso/chorus/pkg/dom"
 	"github.com/clyso/chorus/pkg/features"
 	"github.com/clyso/chorus/pkg/log"
@@ -68,6 +69,62 @@ func Start(ctx context.Context, app dom.AppInfo, conf *Config) error {
 	defer func() {
 		_ = shutdown(context.Background())
 	}()
+
+	// Initialize external database (for replication configs/jobs)
+	dbCfg := db.FromConfigAndEnv(func() *struct{
+		DSN string
+		Host string
+		Port int
+		User string
+		Password string
+		Name string
+		SSLMode string
+		MaxOpenConns int
+		MaxIdleConns int
+		ConnMaxLifetime time.Duration
+		ConnMaxIdleTime time.Duration
+		LogLevel string
+	} {
+		if conf.Database == nil { return nil }
+		return &struct{
+			DSN string
+			Host string
+			Port int
+			User string
+			Password string
+			Name string
+			SSLMode string
+			MaxOpenConns int
+			MaxIdleConns int
+			ConnMaxLifetime time.Duration
+			ConnMaxIdleTime time.Duration
+			LogLevel string
+		}{
+			DSN: conf.Database.DSN,
+			Host: conf.Database.Host,
+			Port: conf.Database.Port,
+			User: conf.Database.User,
+			Password: conf.Database.Password,
+			Name: conf.Database.Name,
+			SSLMode: conf.Database.SSLMode,
+			MaxOpenConns: conf.Database.MaxOpenConns,
+			MaxIdleConns: conf.Database.MaxIdleConns,
+			ConnMaxLifetime: conf.Database.ConnMaxLifetime,
+			ConnMaxIdleTime: conf.Database.ConnMaxIdleTime,
+			LogLevel: conf.Database.LogLevel,
+		}
+	}())
+	gdb, err := db.Open(dbCfg)
+	if err != nil {
+		return fmt.Errorf("%w: unable to open db", err)
+	}
+	defer func() { _ = db.Close(gdb) }()
+	pingCtx, cancelPing := context.WithTimeout(ctx, 5*time.Second)
+	defer cancelPing()
+	if err := db.Ping(pingCtx, gdb); err != nil {
+		return fmt.Errorf("%w: unable to reach db", err)
+	}
+	logger.Info().Msg("db connected")
 
 	appRedis := util.NewRedis(conf.Redis, conf.Redis.MetaDB)
 	defer appRedis.Close()
