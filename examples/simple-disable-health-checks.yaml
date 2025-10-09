@@ -1,0 +1,31 @@
+# Simple example showing how to disable health checks without database
+concurrency: 10
+shutdownTimeout: 5s
+worker:
+  queueUpdateInterval: 5s
+  pauseRetryInterval: 30s
+  switchRetryInterval: 30s
+
+# Disable database to avoid connection issues
+database:
+  useForReplication: false
+
+storage:
+  defaultRegion: "us-east-1"
+  storages:
+    main:
+      defaultRegion: "us-east-1"
+      address: "http://fake-s3-main:9000"  # This will fail health check
+      credentials:
+        user1:
+          accessKeyID: "minioadmin"
+          secretAccessKey: "minioadmin"
+      provider: "Minio"
+      isMain: true
+      healthCheckInterval: 10s
+      healthCheckEnabled: false  # This prevents shutdown
+      httpTimeout: 1m
+      isSecure: false
+      rateLimit:
+        enabled: false
+        rpm: 60

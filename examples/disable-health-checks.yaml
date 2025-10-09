@@ -1,0 +1,46 @@
+# Example configuration showing how to disable health checks for misconfigured storages
+# This prevents the worker from shutting down when storage health checks fail
+
+concurrency: 10
+shutdownTimeout: 5s
+worker:
+  queueUpdateInterval: 5s
+  pauseRetryInterval: 30s
+  switchRetryInterval: 30s
+
+storage:
+  defaultRegion: "us-east-1"
+  storages:
+    main:
+      defaultRegion: "us-east-1"
+      address: "http://fake-s3-main:9000"  # This might be misconfigured or offline
+      credentials:
+        user1:
+          accessKeyID: "minioadmin"
+          secretAccessKey: "minioadmin"
+      provider: "Minio"
+      isMain: true
+      healthCheckInterval: 10s
+      healthCheckEnabled: false  # Disable health checks to prevent shutdown
+      httpTimeout: 1m
+      isSecure: false
+      rateLimit:
+        enabled: false
+        rpm: 60
+
+    follower:
+      defaultRegion: "us-east-1"
+      address: "http://fake-s3-follower:9000"  # This might also be misconfigured
+      credentials:
+        user1:
+          accessKeyID: "minioadmin"
+          secretAccessKey: "minioadmin"
+      provider: "Minio"
+      isMain: false
+      healthCheckInterval: 10s
+      healthCheckEnabled: false  # Disable health checks to prevent shutdown
+      httpTimeout: 1m
+      isSecure: false
+      rateLimit:
+        enabled: false
+        rpm: 60

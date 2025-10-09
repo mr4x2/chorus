@@ -31,6 +31,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sns"
 	mclient "github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -63,28 +64,59 @@ func newClient(ctx context.Context, conf s3.Storage, name, user string, metricsS
 		return nil, err
 	}
 	c.s3 = newMinioClient(name, user, mc, metricsSvc)
-	if err = isOnline(ctx, c); err != nil {
-		return nil, fmt.Errorf("s3 is offline: %w", err)
-	}
-	c.online.Store(true)
-	go func(duration time.Duration) {
-		timer := time.NewTimer(duration)
-		defer timer.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-timer.C:
-				// Do health check the first time and ONLY if the connection is marked offline
-				if !c.online.Load() {
-					if err = isOnline(ctx, c); err != nil {
-						c.online.Store(true)
-					}
-				}
-				timer.Reset(duration)
-			}
+
+	// Perform initial health check if enabled
+	if conf.HealthCheckEnabled {
+		if err = isOnline(ctx, c); err != nil {
+			// Log the error but don't fail client creation
+			zerolog.Ctx(ctx).Warn().
+				Str("storage", name).
+				Str("user", user).
+				Err(err).
+				Msg("storage health check failed during initialization - client will be marked offline")
+			c.online.Store(false)
+		} else {
+			c.online.Store(true)
 		}
-	}(conf.HealthCheckInterval)
+	} else {
+		// If health checks are disabled, assume storage is online
+		zerolog.Ctx(ctx).Info().
+			Str("storage", name).
+			Str("user", user).
+			Msg("health checks disabled - assuming storage is online")
+		c.online.Store(true)
+	}
+	// Start periodic health check only if enabled
+	if conf.HealthCheckEnabled {
+		go func(duration time.Duration) {
+			timer := time.NewTimer(duration)
+			defer timer.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-timer.C:
+					// Do health check the first time and ONLY if the connection is marked offline
+					if !c.online.Load() {
+						if err = isOnline(ctx, c); err != nil {
+							zerolog.Ctx(ctx).Debug().
+								Str("storage", name).
+								Str("user", user).
+								Err(err).
+								Msg("periodic health check failed - storage remains offline")
+						} else {
+							zerolog.Ctx(ctx).Info().
+								Str("storage", name).
+								Str("user", user).
+								Msg("periodic health check succeeded - storage is back online")
+							c.online.Store(true)
+						}
+					}
+					timer.Reset(duration)
+				}
+			}
+		}(conf.HealthCheckInterval)
+	}
 
 	awsClient, err := newAWSClient(conf, name, user, metricsSvc)
 	if err != nil {

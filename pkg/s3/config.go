@@ -44,6 +44,7 @@ type Storage struct {
 	Provider            string                   `yaml:"provider"`
 	IsMain              bool                     `yaml:"isMain"`
 	HealthCheckInterval time.Duration            `yaml:"healthCheckInterval"`
+	HealthCheckEnabled  bool                     `yaml:"healthCheckEnabled"`
 	HttpTimeout         time.Duration            `yaml:"httpTimeout"`
 	IsSecure            bool                     `yaml:"isSecure"`
 	DefaultRegion       string                   `yaml:"defaultRegion"`
@@ -141,6 +142,12 @@ func (s *StorageConfig) Init() error {
 
 		if storage.HealthCheckInterval == 0 {
 			storage.HealthCheckInterval = defaultHealthCheckInterval
+		}
+		// HealthCheckEnabled defaults to false to prevent shutdowns on misconfigured storages
+		// Users can set it to true to enable health checks
+		if storage.HealthCheckInterval > 0 && !storage.HealthCheckEnabled {
+			// If interval is set but not explicitly disabled, enable health checks
+			storage.HealthCheckEnabled = true
 		}
 		if storage.HttpTimeout == 0 {
 			storage.HttpTimeout = defaultHttpTimeout
