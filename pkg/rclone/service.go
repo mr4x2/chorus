@@ -95,9 +95,13 @@ func (f File) path() string {
 }
 
 type Service interface {
-	CopyTo(ctx context.Context, user string, from, to File, size int64) error
+    CopyTo(ctx context.Context, user string, from, to File, size int64) error
 
-	Compare(ctx context.Context, listMatch bool, user, from, to, fromBucket string, toBucket string) (*CompareRes, error)
+    Compare(ctx context.Context, listMatch bool, user, from, to, fromBucket string, toBucket string) (*CompareRes, error)
+
+    // EnsureRuntimeUser dynamically registers credentials for a given storage+user alias.
+    // This enables DB-backed project IDs to be used as user aliases at runtime.
+    EnsureRuntimeUser(storage, user, address, provider, accessKey, secretKey string) error
 }
 
 func New(conf *s3.StorageConfig, jsonLog bool, metricsSvc metrics.S3Service, mamCalc *MemCalculator, memLimiter, fileLimiter ratelimit.Semaphore) (Service, error) {
@@ -167,6 +171,28 @@ func (s *svc) getConf(storage, user string) (*configmap.Map, error) {
 		return nil, fmt.Errorf("%w: config for storage %q, user %q not found", dom.ErrInvalidStorageConfig, storage, user)
 	}
 	return res, nil
+}
+
+func (s *svc) EnsureRuntimeUser(storage, user, address, provider, accessKey, secretKey string) error {
+    name := storage + ":" + user
+    if _, ok := s._configs[name]; ok {
+        return nil
+    }
+    scm := configmap.Simple{}
+    keyValues := rc.Params{
+        "env_auth":          false,
+        "access_key_id":     accessKey,
+        "secret_access_key": secretKey,
+        "endpoint":          address,
+        "provider":          provider,
+    }
+    for k, v := range keyValues {
+        vStr := fmt.Sprint(v)
+        scm.Set(k, vStr)
+    }
+    cm := fs.ConfigMap(s.s3.Prefix, s.s3.Options, name, scm)
+    s._configs[name] = cm
+    return nil
 }
 
 func (s *svc) Compare(ctx context.Context, listMatch bool, user, from, to, fromBucket string, toBucket string) (*CompareRes, error) {
