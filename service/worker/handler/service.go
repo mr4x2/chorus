@@ -23,7 +23,12 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/trace"
+
+	"github.com/clyso/chorus/pkg/config"
 	"github.com/clyso/chorus/pkg/meta"
+	"github.com/clyso/chorus/pkg/metrics"
 	"github.com/clyso/chorus/pkg/policy"
 	"github.com/clyso/chorus/pkg/ratelimit"
 	"github.com/clyso/chorus/pkg/rclone"
@@ -52,12 +57,16 @@ type svc struct {
 	replicationstatusLocker *store.ReplicationStatusLocker
 	conf                    *Config
 	rclone.CopySvc
+	configSource config.ConfigSource
+	metricsSvc   metrics.S3Service
+	tp           trace.TracerProvider
 }
 
 func New(conf *Config, clients s3client.Service, versionSvc meta.VersionService,
 	policySvc policy.Service, storageSvc storage.Service, rc rclone.Service,
 	queueSvc tasks.QueueService, limit ratelimit.RPM, objectLocker *store.ObjectLocker,
-	bucketLocker *store.BucketLocker, replicationstatusLocker *store.ReplicationStatusLocker) *svc {
+	bucketLocker *store.BucketLocker, replicationstatusLocker *store.ReplicationStatusLocker,
+	configSource config.ConfigSource, metricsSvc metrics.S3Service, tp trace.TracerProvider) *svc {
 	return &svc{
 		conf:                    conf,
 		clients:                 clients,
@@ -70,15 +79,32 @@ func New(conf *Config, clients s3client.Service, versionSvc meta.VersionService,
 		objectLocker:            objectLocker,
 		bucketLocker:            bucketLocker,
 		replicationstatusLocker: replicationstatusLocker,
+		configSource:            configSource,
+		metricsSvc:              metricsSvc,
+		tp:                      tp,
 	}
 }
 
-func (s *svc) getClients(ctx context.Context, user, fromStorage, toStorage string) (fromClient s3client.Client, toClient s3client.Client, err error) {
+func (s *svc) getClients(ctx context.Context, user, fromStorage, toStorage string, jobID *uuid.UUID) (fromClient s3client.Client, toClient s3client.Client, err error) {
+	if s.configSource == nil {
+		return nil, nil, fmt.Errorf("config source is not initialized: %w", asynq.SkipRetry)
+	}
+
+	// Use unified config source which handles both job ID and storage name paths
+	if unifiedSource, ok := s.configSource.(*config.UnifiedSource); ok {
+		return unifiedSource.GetClientsByJobIDOrName(ctx, jobID, user, fromStorage, toStorage)
+	}
+
+	// Fallback for other config source types
+	if jobID != nil {
+		return s.configSource.GetClients(ctx, *jobID, user)
+	}
+
+	// Legacy YAML path - this should not happen with UnifiedSource
 	fromClient, err = s.clients.GetByName(ctx, user, fromStorage)
 	if err != nil {
 		return nil, nil, fmt.Errorf("unable to get %q s3 client: %w: %w", fromStorage, err, asynq.SkipRetry)
 	}
-
 	toClient, err = s.clients.GetByName(ctx, user, toStorage)
 	if err != nil {
 		return nil, nil, fmt.Errorf("unable to get %q s3 client: %w: %w", toStorage, err, asynq.SkipRetry)

@@ -44,7 +44,7 @@ func (s *svc) HandleBucketCreate(ctx context.Context, t *asynq.Task) (err error)
 
 	replicationID := p.ID
 
-	fromClient, toClient, err := s.getClients(ctx, p.ID.User(), p.ID.FromStorage(), p.ID.ToStorage())
+	fromClient, toClient, err := s.getClients(ctx, p.ID.User(), p.ID.FromStorage(), p.ID.ToStorage(), p.JobID)
 	if err != nil {
 		return err
 	}
@@ -99,7 +99,11 @@ func (s *svc) HandleBucketCreate(ctx context.Context, t *asynq.Task) (err error)
 		Prefix:    "",
 		Versioned: shouldListVersions,
 	}
-	task.SetReplicationID(replicationID)
+    task.SetReplicationID(replicationID)
+    // propagate job id so downstream handlers can resolve DB creds
+    if jobID := p.GetJobID(); jobID != nil {
+        task.SetJobID(*jobID)
+    }
 	err = s.queueSvc.EnqueueTask(ctx, task)
 	if err != nil {
 		return fmt.Errorf("create bucket: unable to create list obj task: %w", err)
@@ -242,7 +246,7 @@ func (s *svc) HandleBucketDelete(ctx context.Context, t *asynq.Task) (err error)
 	}
 	ctx = log.WithBucket(ctx, p.Bucket)
 
-	fromClient, toClient, err := s.getClients(ctx, p.ID.User(), p.ID.FromStorage(), p.ID.ToStorage())
+	fromClient, toClient, err := s.getClients(ctx, p.ID.User(), p.ID.FromStorage(), p.ID.ToStorage(), nil)
 	if err != nil {
 		return err
 	}

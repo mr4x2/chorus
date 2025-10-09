@@ -28,8 +28,10 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
+	"gorm.io/gorm"
 
 	"github.com/clyso/chorus/pkg/api"
+	"github.com/clyso/chorus/pkg/config"
 	"github.com/clyso/chorus/pkg/db"
 	"github.com/clyso/chorus/pkg/dom"
 	"github.com/clyso/chorus/pkg/features"
@@ -40,6 +42,7 @@ import (
 	"github.com/clyso/chorus/pkg/policy"
 	"github.com/clyso/chorus/pkg/ratelimit"
 	"github.com/clyso/chorus/pkg/rclone"
+	ldb "github.com/clyso/chorus/pkg/repository/db"
 	"github.com/clyso/chorus/pkg/rpc"
 	"github.com/clyso/chorus/pkg/s3client"
 	"github.com/clyso/chorus/pkg/storage"
@@ -70,61 +73,70 @@ func Start(ctx context.Context, app dom.AppInfo, conf *Config) error {
 		_ = shutdown(context.Background())
 	}()
 
-	// Initialize external database (for replication configs/jobs)
-	dbCfg := db.FromConfigAndEnv(func() *struct{
-		DSN string
-		Host string
-		Port int
-		User string
-		Password string
-		Name string
-		SSLMode string
-		MaxOpenConns int
-		MaxIdleConns int
-		ConnMaxLifetime time.Duration
-		ConnMaxIdleTime time.Duration
-		LogLevel string
-	} {
-		if conf.Database == nil { return nil }
-		return &struct{
-			DSN string
-			Host string
-			Port int
-			User string
-			Password string
-			Name string
-			SSLMode string
-			MaxOpenConns int
-			MaxIdleConns int
+	// Initialize external database (for replication configs/jobs) only if needed
+	var gdb *gorm.DB
+	useDB := conf.Database != nil && conf.Database.UseForReplication
+	if useDB {
+		dbCfg := db.FromConfigAndEnv(func() *struct {
+			DSN             string
+			Host            string
+			Port            int
+			User            string
+			Password        string
+			Name            string
+			SSLMode         string
+			MaxOpenConns    int
+			MaxIdleConns    int
 			ConnMaxLifetime time.Duration
 			ConnMaxIdleTime time.Duration
-			LogLevel string
-		}{
-			DSN: conf.Database.DSN,
-			Host: conf.Database.Host,
-			Port: conf.Database.Port,
-			User: conf.Database.User,
-			Password: conf.Database.Password,
-			Name: conf.Database.Name,
-			SSLMode: conf.Database.SSLMode,
-			MaxOpenConns: conf.Database.MaxOpenConns,
-			MaxIdleConns: conf.Database.MaxIdleConns,
-			ConnMaxLifetime: conf.Database.ConnMaxLifetime,
-			ConnMaxIdleTime: conf.Database.ConnMaxIdleTime,
-			LogLevel: conf.Database.LogLevel,
+			LogLevel        string
+		} {
+			if conf.Database == nil {
+				return nil
+			}
+			return &struct {
+				DSN             string
+				Host            string
+				Port            int
+				User            string
+				Password        string
+				Name            string
+				SSLMode         string
+				MaxOpenConns    int
+				MaxIdleConns    int
+				ConnMaxLifetime time.Duration
+				ConnMaxIdleTime time.Duration
+				LogLevel        string
+			}{
+				DSN:             conf.Database.DSN,
+				Host:            conf.Database.Host,
+				Port:            conf.Database.Port,
+				User:            conf.Database.User,
+				Password:        conf.Database.Password,
+				Name:            conf.Database.Name,
+				SSLMode:         conf.Database.SSLMode,
+				MaxOpenConns:    conf.Database.MaxOpenConns,
+				MaxIdleConns:    conf.Database.MaxIdleConns,
+				ConnMaxLifetime: conf.Database.ConnMaxLifetime,
+				ConnMaxIdleTime: conf.Database.ConnMaxIdleTime,
+				LogLevel:        conf.Database.LogLevel,
+			}
+		}())
+		var err error
+		gdb, err = db.Open(dbCfg)
+		if err != nil {
+			return fmt.Errorf("%w: unable to open db", err)
 		}
-	}())
-	gdb, err := db.Open(dbCfg)
-	if err != nil {
-		return fmt.Errorf("%w: unable to open db", err)
+		defer func() { _ = db.Close(gdb) }()
+		pingCtx, cancelPing := context.WithTimeout(ctx, 5*time.Second)
+		defer cancelPing()
+		if err := db.Ping(pingCtx, gdb); err != nil {
+			return fmt.Errorf("%w: unable to reach db", err)
+		}
+		logger.Info().Msg("db connected")
+	} else {
+		logger.Info().Msg("database not configured - using YAML-based configuration")
 	}
-	defer func() { _ = db.Close(gdb) }()
-	pingCtx, cancelPing := context.WithTimeout(ctx, 5*time.Second)
-	defer cancelPing()
-	if err := db.Ping(pingCtx, gdb); err != nil {
-		return fmt.Errorf("%w: unable to reach db", err)
-	}
-	logger.Info().Msg("db connected")
 
 	appRedis := util.NewRedis(conf.Redis, conf.Redis.MetaDB)
 	defer appRedis.Close()
@@ -207,7 +219,22 @@ func Start(ctx context.Context, app dom.AppInfo, conf *Config) error {
 	checkSvc := handler.NewConsistencyCheckSvc(consistencyCheckIDStore, consistencyCheckListStateStore, consistencyCheckSetStore, copySvc, queueSvc)
 	checkCtrl := handler.NewConsistencyCheckCtrl(checkSvc, queueSvc)
 
-	workerSvc := handler.New(conf.Worker, s3Clients, versionSvc, policySvc, storageSvc, rc, queueSvc, limiter, objectLocker, bucketLocker, replicationStatusLocker)
+	// Build unified config source that can handle both YAML and DB sources
+
+	var configSource config.ConfigSource
+	if useDB {
+		// Create DB-backed config source
+		loader := ldb.NewConfigLoader(gdb, time.Minute*5)
+		dbSource := config.NewDBSource(loader, metricsSvc, tp)
+		yamlSource := config.NewYAMLSource(s3Clients, metricsSvc, tp)
+		configSource = config.NewUnifiedSource(yamlSource, dbSource, useDB)
+	} else {
+		// Create YAML-only config source
+		yamlSource := config.NewYAMLSource(s3Clients, metricsSvc, tp)
+		configSource = config.NewUnifiedSource(yamlSource, nil, useDB)
+	}
+
+	workerSvc := handler.New(conf.Worker, s3Clients, versionSvc, policySvc, storageSvc, rc, queueSvc, limiter, objectLocker, bucketLocker, replicationStatusLocker, configSource, metricsSvc, tp)
 
 	stdLogger := log.NewStdLogger()
 	redis.SetLogger(stdLogger)
@@ -290,7 +317,7 @@ func Start(ctx context.Context, app dom.AppInfo, conf *Config) error {
 	}
 
 	if conf.Api.Enabled {
-		handlers := api.GrpcHandlers(conf.Storage, s3Clients, queueSvc, rc, policySvc, versionSvc, storageSvc, checkSvc, rpc.NewProxyClient(appRedis), rpc.NewAgentClient(appRedis), notifications.NewService(s3Clients), replicationStatusLocker, userLocker, &app)
+		handlers := api.GrpcHandlers(conf.Storage, s3Clients, queueSvc, rc, policySvc, versionSvc, storageSvc, checkSvc, rpc.NewProxyClient(appRedis), rpc.NewAgentClient(appRedis), notifications.NewService(s3Clients), replicationStatusLocker, userLocker, configSource, &app)
 		start, stop, err := api.NewGrpcServer(conf.Api.GrpcPort, handlers, tp, conf.Log, app)
 		if err != nil {
 			return err

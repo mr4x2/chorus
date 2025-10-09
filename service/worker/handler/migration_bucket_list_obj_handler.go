@@ -46,10 +46,11 @@ func (s *svc) HandleMigrationBucketListObj(ctx context.Context, t *asynq.Task) e
 		return err
 	}
 
-	fromClient, err := s.clients.GetByName(ctx, p.ID.User(), p.ID.FromStorage())
-	if err != nil {
-		return fmt.Errorf("migration bucket list obj: unable to get %q s3 client: %w: %w", p.ID.FromStorage(), err, asynq.SkipRetry)
-	}
+    // Resolve clients via unified config source so DB-backed credentials (by job_id) are used
+    fromClient, _, err := s.getClients(ctx, p.ID.User(), p.ID.FromStorage(), p.ID.ToStorage(), p.GetJobID())
+    if err != nil {
+        return fmt.Errorf("migration bucket list obj: unable to get %q s3 client: %w", p.ID.FromStorage(), err)
+    }
 
 	lastObjName, err := s.storageSvc.GetLastListedObj(ctx, p)
 	if err != nil {
@@ -78,12 +79,13 @@ func (s *svc) HandleMigrationBucketListObj(ctx context.Context, t *asynq.Task) e
 			continue
 		}
 
-		if p.Versioned {
-			task := tasks.ListObjectVersionsPayload{
-				Bucket: p.Bucket,
-				Prefix: object.Key,
-			}
-			task.SetReplicationID(replicationID)
+        if p.Versioned {
+            task := tasks.ListObjectVersionsPayload{
+                Bucket: p.Bucket,
+                Prefix: object.Key,
+            }
+            task.SetReplicationID(replicationID)
+            if jobID := p.GetJobID(); jobID != nil { task.SetJobID(*jobID) }
 			err = s.queueSvc.EnqueueTask(ctx, task)
 			if err != nil {
 				return fmt.Errorf("unable to create list object versions task: %w", err)
@@ -99,7 +101,8 @@ func (s *svc) HandleMigrationBucketListObj(ctx context.Context, t *asynq.Task) e
 					ContentType: object.ContentType,
 				},
 			}
-			task.SetReplicationID(replicationID)
+            task.SetReplicationID(replicationID)
+            if jobID := p.GetJobID(); jobID != nil { task.SetJobID(*jobID) }
 			err = s.queueSvc.EnqueueTask(ctx, task)
 			if err != nil {
 				return fmt.Errorf("migration bucket list obj: unable to create copy obj task: %w", err)
@@ -113,13 +116,14 @@ func (s *svc) HandleMigrationBucketListObj(ctx context.Context, t *asynq.Task) e
 
 	if lastObjName == "" && objectsNum == 0 && p.Prefix != "" {
 		// copy empty dir object
-		task := tasks.MigrateObjCopyPayload{
+        task := tasks.MigrateObjCopyPayload{
 			Bucket: p.Bucket,
 			Obj: tasks.ObjPayload{
 				Name: p.Prefix,
 			},
 		}
-		task.SetReplicationID(replicationID)
+        task.SetReplicationID(replicationID)
+        if jobID := p.GetJobID(); jobID != nil { task.SetJobID(*jobID) }
 		err = s.queueSvc.EnqueueTask(ctx, task)
 		if err != nil {
 			return fmt.Errorf("migration bucket list obj: unable to enqueue copy obj task: %w", err)

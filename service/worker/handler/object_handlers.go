@@ -104,7 +104,7 @@ func (s *svc) HandleObjectSync(ctx context.Context, t *asynq.Task) (err error) {
 }
 
 func (s *svc) objectDelete(ctx context.Context, p tasks.ObjectSyncPayload) (err error) {
-	fromClient, toClient, err := s.getClients(ctx, p.ID.User(), p.ID.FromStorage(), p.ID.ToStorage())
+	fromClient, toClient, err := s.getClients(ctx, p.ID.User(), p.ID.FromStorage(), p.ID.ToStorage(), p.JobID)
 	if err != nil {
 		return err
 	}
