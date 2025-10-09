@@ -94,5 +94,3 @@ FROM replicate_job rj
 LEFT JOIN storage fs ON fs.id = rj.from_id
 LEFT JOIN storage ts ON ts.id = rj.to_id
 ORDER BY rj.created_at DESC;
-
-

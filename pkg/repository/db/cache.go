@@ -1,3 +1,17 @@
+// Copyright 2025 Clyso GmbH
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package db
 
 import (
@@ -25,10 +39,10 @@ func NewConfigCache(ttl time.Duration) *ConfigCache {
 		data: make(map[uuid.UUID]*cacheEntry),
 		ttl:  ttl,
 	}
-	
+
 	// Start cleanup goroutine
 	go cache.cleanup()
-	
+
 	return cache
 }
 
@@ -36,17 +50,17 @@ func NewConfigCache(ttl time.Duration) *ConfigCache {
 func (c *ConfigCache) Get(jobID uuid.UUID) *RuntimeConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	
+
 	entry, exists := c.data[jobID]
 	if !exists {
 		return nil
 	}
-	
+
 	// Check if expired
 	if time.Now().After(entry.expiresAt) {
 		return nil
 	}
-	
+
 	return entry.config
 }
 
@@ -54,7 +68,7 @@ func (c *ConfigCache) Get(jobID uuid.UUID) *RuntimeConfig {
 func (c *ConfigCache) Set(jobID uuid.UUID, config *RuntimeConfig) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	c.data[jobID] = &cacheEntry{
 		config:    config,
 		expiresAt: time.Now().Add(c.ttl),
@@ -65,7 +79,7 @@ func (c *ConfigCache) Set(jobID uuid.UUID, config *RuntimeConfig) {
 func (c *ConfigCache) Invalidate(jobID uuid.UUID) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	delete(c.data, jobID)
 }
 
@@ -73,7 +87,7 @@ func (c *ConfigCache) Invalidate(jobID uuid.UUID) {
 func (c *ConfigCache) InvalidateByProject(projectID uuid.UUID) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	for jobID, entry := range c.data {
 		if entry.config != nil && entry.config.ProjectID == projectID {
 			delete(c.data, jobID)
@@ -85,7 +99,7 @@ func (c *ConfigCache) InvalidateByProject(projectID uuid.UUID) {
 func (c *ConfigCache) Clear() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	c.data = make(map[uuid.UUID]*cacheEntry)
 }
 
@@ -93,7 +107,7 @@ func (c *ConfigCache) Clear() {
 func (c *ConfigCache) Size() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	
+
 	return len(c.data)
 }
 
@@ -101,7 +115,7 @@ func (c *ConfigCache) Size() int {
 func (c *ConfigCache) cleanup() {
 	ticker := time.NewTicker(c.ttl / 2) // Cleanup every half TTL
 	defer ticker.Stop()
-	
+
 	for range ticker.C {
 		c.mu.Lock()
 		now := time.Now()
