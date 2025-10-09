@@ -798,6 +798,14 @@
         "agentUrl": {
           "type": "string",
           "description": "webhook URL of chorus agent. Required if chorus agent setup is used."
+        },
+        "jobId": {
+          "type": "string",
+          "title": "database job ID for DB-backed replication (optional)"
+        },
+        "dryRun": {
+          "type": "boolean",
+          "title": "dry run mode - validate configuration without creating replication"
         }
       }
     },

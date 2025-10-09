@@ -1147,7 +1147,11 @@ type AddBucketReplicationRequest struct {
 	// custom destination bucket name. if not set, destination bucket name will be equal to source bucket
 	ToBucket string `protobuf:"bytes,5,opt,name=to_bucket,json=toBucket,proto3" json:"to_bucket,omitempty"`
 	// webhook URL of chorus agent. Required if chorus agent setup is used.
-	AgentUrl      *string `protobuf:"bytes,6,opt,name=agent_url,json=agentUrl,proto3,oneof" json:"agent_url,omitempty"`
+	AgentUrl *string `protobuf:"bytes,6,opt,name=agent_url,json=agentUrl,proto3,oneof" json:"agent_url,omitempty"`
+	// database job ID for DB-backed replication (optional)
+	JobId *string `protobuf:"bytes,7,opt,name=job_id,json=jobId,proto3,oneof" json:"job_id,omitempty"`
+	// dry run mode - validate configuration without creating replication
+	DryRun        bool `protobuf:"varint,8,opt,name=dry_run,json=dryRun,proto3" json:"dry_run,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1222,6 +1226,20 @@ func (x *AddBucketReplicationRequest) GetAgentUrl() string {
 		return *x.AgentUrl
 	}
 	return ""
+}
+
+func (x *AddBucketReplicationRequest) GetJobId() string {
+	if x != nil && x.JobId != nil {
+		return *x.JobId
+	}
+	return ""
+}
+
+func (x *AddBucketReplicationRequest) GetDryRun() bool {
+	if x != nil {
+		return x.DryRun
+	}
+	return false
 }
 
 type ListBucketsForReplicationRequest struct {
@@ -2709,7 +2727,7 @@ const file_chorus_chorus_proto_rawDesc = "" +
 	"\tagent_url\x18\a \x01(\tH\x00R\bagentUrl\x88\x01\x01\x12\x1b\n" +
 	"\tto_bucket\x18\b \x01(\tR\btoBucketB\f\n" +
 	"\n" +
-	"_agent_url\"\xe1\x01\n" +
+	"_agent_url\"\xa1\x02\n" +
 	"\x1bAddBucketReplicationRequest\x12\x12\n" +
 	"\x04user\x18\x01 \x01(\tR\x04user\x12!\n" +
 	"\ffrom_storage\x18\x02 \x01(\tR\vfromStorage\x12\x1f\n" +
@@ -2718,9 +2736,12 @@ const file_chorus_chorus_proto_rawDesc = "" +
 	"\n" +
 	"to_storage\x18\x04 \x01(\tR\ttoStorage\x12\x1b\n" +
 	"\tto_bucket\x18\x05 \x01(\tR\btoBucket\x12 \n" +
-	"\tagent_url\x18\x06 \x01(\tH\x00R\bagentUrl\x88\x01\x01B\f\n" +
+	"\tagent_url\x18\x06 \x01(\tH\x00R\bagentUrl\x88\x01\x01\x12\x1a\n" +
+	"\x06job_id\x18\a \x01(\tH\x01R\x05jobId\x88\x01\x01\x12\x17\n" +
+	"\adry_run\x18\b \x01(\bR\x06dryRunB\f\n" +
 	"\n" +
-	"_agent_url\"\x83\x01\n" +
+	"_agent_urlB\t\n" +
+	"\a_job_id\"\x83\x01\n" +
 	" ListBucketsForReplicationRequest\x12\x12\n" +
 	"\x04user\x18\x01 \x01(\tR\x04user\x12\x12\n" +
 	"\x04from\x18\x02 \x01(\tR\x04from\x12\x0e\n" +

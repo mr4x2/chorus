@@ -25,11 +25,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/clyso/chorus/pkg/config"
 	"github.com/clyso/chorus/pkg/dom"
 	"github.com/clyso/chorus/pkg/entity"
 	"github.com/clyso/chorus/pkg/meta"
@@ -57,7 +59,7 @@ func GrpcHandlers(storages *s3.StorageConfig, s3clients s3client.Service, queueS
 	storageSvc storage.Service, checkSvc *handler.ConsistencyCheckSvc, proxyClient rpc.Proxy,
 	agentClient *rpc.AgentClient, notificationSvc *notifications.Service,
 	replicationStatusLocker *store.ReplicationStatusLocker, userLocker *store.UserLocker,
-	appInfo *dom.AppInfo) pb.ChorusServer {
+	configSource config.ConfigSource, appInfo *dom.AppInfo) pb.ChorusServer {
 	return &handlers{
 		storages:                storages,
 		rclone:                  rclone,
@@ -72,6 +74,7 @@ func GrpcHandlers(storages *s3.StorageConfig, s3clients s3client.Service, queueS
 		notificationSvc:         notificationSvc,
 		replicationStatusLocker: replicationStatusLocker,
 		userLocker:              userLocker,
+		configSource:            configSource,
 		appInfo:                 appInfo,
 	}
 }
@@ -90,6 +93,7 @@ type handlers struct {
 	proxyClient             rpc.Proxy
 	agentClient             *rpc.AgentClient
 	notificationSvc         *notifications.Service
+	configSource            config.ConfigSource
 	appInfo                 *dom.AppInfo
 	replicationStatusLocker *store.ReplicationStatusLocker
 	userLocker              *store.UserLocker
@@ -694,6 +698,150 @@ func (h *handlers) GetAgents(ctx context.Context, _ *emptypb.Empty) (*pb.GetAgen
 }
 
 func (h *handlers) AddBucketReplication(ctx context.Context, req *pb.AddBucketReplicationRequest) (*emptypb.Empty, error) {
+	// Handle dry run mode
+	if req.DryRun {
+		return h.validateBucketReplication(ctx, req)
+	}
+
+	// Handle job ID-based replication (DB-backed)
+	if req.JobId != nil && *req.JobId != "" {
+		return h.addBucketReplicationByJobID(ctx, req)
+	}
+
+	// Handle traditional storage name-based replication (YAML-backed)
+	return h.addBucketReplicationByNames(ctx, req)
+}
+
+// validateBucketReplication performs validation without creating replication
+func (h *handlers) validateBucketReplication(ctx context.Context, req *pb.AddBucketReplicationRequest) (*emptypb.Empty, error) {
+	// If job ID is provided, validate it exists in database
+	if req.JobId != nil && *req.JobId != "" {
+		// Parse and validate job ID format
+		jobID, err := uuid.Parse(*req.JobId)
+		if err != nil {
+			return nil, fmt.Errorf("%w: invalid job ID format: %v", dom.ErrInvalidArg, err)
+		}
+
+		// If config source is available, validate job exists and is in correct state
+		if h.configSource != nil {
+			config, err := h.configSource.LoadConfig(ctx, jobID)
+			if err != nil {
+				return nil, fmt.Errorf("job validation failed: %w", err)
+			}
+			
+			// Validate job is in executable state
+			if config.Status != "pending" && config.Status != "running" {
+				return nil, fmt.Errorf("%w: job %s is not in executable state (status: %s)", dom.ErrInvalidArg, jobID, config.Status)
+			}
+		}
+		
+		return &emptypb.Empty{}, nil
+	}
+
+	// Validate traditional storage-based replication
+	if _, ok := h.storages.Storages[req.FromStorage]; !ok {
+		return nil, fmt.Errorf("%w: unknown from storage %s", dom.ErrInvalidArg, req.FromStorage)
+	}
+	if _, ok := h.storages.Storages[req.ToStorage]; !ok {
+		return nil, fmt.Errorf("%w: unknown to storage %s", dom.ErrInvalidArg, req.ToStorage)
+	}
+	if _, ok := h.storages.Storages[req.FromStorage].Credentials[req.User]; !ok {
+		return nil, fmt.Errorf("%w: unknown user %s", dom.ErrInvalidArg, req.User)
+	}
+
+	// Validate bucket exists
+	client, err := h.s3clients.GetByName(ctx, req.User, req.FromStorage)
+	if err != nil {
+		return nil, err
+	}
+	ok, err := client.S3().BucketExists(ctx, req.FromBucket)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("%w: unknown bucket %s", dom.ErrInvalidArg, req.FromBucket)
+	}
+
+	// Validate agent URL if provided
+	if err = h.validateAgentURL(ctx, req.FromStorage, req.AgentUrl); err != nil {
+		return nil, err
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+// addBucketReplicationByJobID handles DB-backed replication using job ID
+func (h *handlers) addBucketReplicationByJobID(ctx context.Context, req *pb.AddBucketReplicationRequest) (*emptypb.Empty, error) {
+	if h.configSource == nil {
+		return nil, fmt.Errorf("%w: config source not available for job ID-based replication", dom.ErrInternal)
+	}
+
+	// Parse job ID
+	jobID, err := uuid.Parse(*req.JobId)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid job ID format: %v", dom.ErrInvalidArg, err)
+	}
+
+	// Load job configuration from database
+	config, err := h.configSource.LoadConfig(ctx, jobID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load job configuration: %w", err)
+	}
+
+	// Validate job is in executable state
+	if config.Status != "pending" && config.Status != "running" {
+		return nil, fmt.Errorf("%w: job %s is not in executable state (status: %s)", dom.ErrInvalidArg, jobID, config.Status)
+	}
+
+	// Update job status to running
+	err = h.configSource.UpdateJobStatus(ctx, jobID, "running")
+	if err != nil {
+		return nil, fmt.Errorf("failed to update job status to running: %w", err)
+	}
+
+	// Create bucket creation task with job ID
+	userAlias := config.ProjectID.String()
+	replID := entity.BucketReplicationPolicy{
+		User:        userAlias,
+		FromStorage: config.FromStorage.Name,
+		FromBucket:  config.Bucket,
+		ToStorage:   config.ToStorage.Name,
+		ToBucket:    func() string { if config.ToBucket != "" { return config.ToBucket }; return config.Bucket }(),
+	}
+	
+	task := tasks.BucketCreatePayload{
+		Bucket:   config.Bucket,
+		Location: "",
+	}
+
+	// Set identifiers on the task payload
+	task.SetJobID(jobID)
+	task.SetReplicationID(entity.UniversalFromBucketReplication(replID))
+	
+	// Enqueue the task
+	err = h.queueSvc.EnqueueTask(ctx, task)
+	if err != nil {
+		// If task enqueue fails, update job status back to failed with a truncated reason (<=255 chars)
+		reason := fmt.Sprintf("failed to enqueue task: %v", err)
+		if len(reason) > 255 { reason = reason[:255] }
+		updateErr := h.configSource.UpdateJobStatusWithReason(ctx, jobID, "failed", reason)
+		if updateErr != nil {
+			zerolog.Ctx(ctx).Error().Err(updateErr).Msg("failed to update job status after task enqueue failure")
+		}
+		return nil, fmt.Errorf("failed to enqueue replication task: %w", err)
+	}
+
+	zerolog.Ctx(ctx).Info().
+		Str("job_id", jobID.String()).
+		Str("bucket", config.Bucket).
+		Str("to_bucket", config.ToBucket).
+		Msg("job ID-based replication task enqueued successfully")
+
+	return &emptypb.Empty{}, nil
+}
+
+// addBucketReplicationByNames handles traditional YAML-based replication
+func (h *handlers) addBucketReplicationByNames(ctx context.Context, req *pb.AddBucketReplicationRequest) (*emptypb.Empty, error) {
 	// validate
 	if _, ok := h.storages.Storages[req.FromStorage]; !ok {
 		return nil, fmt.Errorf("%w: unknown from storage %s", dom.ErrInvalidArg, req.FromStorage)

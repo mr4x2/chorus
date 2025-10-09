@@ -213,6 +213,10 @@ message AddBucketReplicationRequest {
   string to_bucket = 5;
   // webhook URL of chorus agent. Required if chorus agent setup is used.
   optional string agent_url = 6;
+  // database job ID for DB-backed replication (optional)
+  optional string job_id = 7;
+  // dry run mode - validate configuration without creating replication
+  bool dry_run = 8;
 }
 
 message ListBucketsForReplicationRequest {
