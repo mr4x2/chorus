@@ -17,6 +17,8 @@
 package tasks
 
 import (
+	"github.com/google/uuid"
+
 	"github.com/clyso/chorus/pkg/dom"
 	"github.com/clyso/chorus/pkg/entity"
 )
@@ -71,6 +73,8 @@ type ReplicationTask interface {
 
 type replicationID struct {
 	ID entity.UniversalReplicationID
+	// Optional DB-backed replicate job ID (when using job-id flow)
+	JobID *uuid.UUID `json:"job_id,omitempty"`
 }
 
 func (r *replicationID) GetReplicationID() entity.UniversalReplicationID {
@@ -79,6 +83,16 @@ func (r *replicationID) GetReplicationID() entity.UniversalReplicationID {
 
 func (r *replicationID) SetReplicationID(id entity.UniversalReplicationID) {
 	r.ID = id
+}
+
+// SetJobID assigns the DB replicate job UUID to this payload (optional).
+func (r *replicationID) SetJobID(id uuid.UUID) {
+	r.JobID = &id
+}
+
+// GetJobID returns the DB replicate job UUID if present; otherwise nil.
+func (r *replicationID) GetJobID() *uuid.UUID {
+	return r.JobID
 }
 
 var _ ReplicationTask = (*replicationID)(nil)
