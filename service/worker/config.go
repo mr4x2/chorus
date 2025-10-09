@@ -47,11 +47,11 @@ type Config struct {
 	Concurrency     int           `yaml:"concurrency"`
 	ShutdownTimeout time.Duration `yaml:"shutdownTimeout"`
 
-	Api    *api.Config     `yaml:"api,omitempty"`
-	RClone *rclone.Config  `yaml:"rclone,omitempty"`
-	Lock   *Lock           `yaml:"lock,omitempty"`
-	Worker *handler.Config `yaml:"worker,omitempty"`
-    Database *Database     `yaml:"database,omitempty"`
+	Api      *api.Config     `yaml:"api,omitempty"`
+	RClone   *rclone.Config  `yaml:"rclone,omitempty"`
+	Lock     *Lock           `yaml:"lock,omitempty"`
+	Worker   *handler.Config `yaml:"worker,omitempty"`
+	Database *Database       `yaml:"database,omitempty"`
 }
 
 type Lock struct {
@@ -84,21 +84,23 @@ func (c *Config) Validate() error {
 }
 
 type Database struct {
-    // Either full DSN or individual fields below
-    DSN string `yaml:"dsn"`
+	// Either full DSN or individual fields below
+	DSN string `yaml:"dsn"`
 
-    Host     string        `yaml:"host"`
-    Port     int           `yaml:"port"`
-    User     string        `yaml:"user"`
-    Password string        `yaml:"password"`
-    Name     string        `yaml:"name"`
-    SSLMode  string        `yaml:"sslmode"`
+	Host     string `yaml:"host"`
+	Port     int    `yaml:"port"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
+	Name     string `yaml:"name"`
+	SSLMode  string `yaml:"sslmode"`
 
-    MaxOpenConns    int           `yaml:"maxOpenConns"`
-    MaxIdleConns    int           `yaml:"maxIdleConns"`
-    ConnMaxLifetime time.Duration `yaml:"connMaxLifetime"`
-    ConnMaxIdleTime time.Duration `yaml:"connMaxIdleTime"`
-    LogLevel        string        `yaml:"logLevel"`
+	MaxOpenConns    int           `yaml:"maxOpenConns"`
+	MaxIdleConns    int           `yaml:"maxIdleConns"`
+	ConnMaxLifetime time.Duration `yaml:"connMaxLifetime"`
+	ConnMaxIdleTime time.Duration `yaml:"connMaxIdleTime"`
+	LogLevel        string        `yaml:"logLevel"`
+	// When true, replication should use DB-backed configs (job-id flow)
+	UseForReplication bool `yaml:"useForReplication"`
 }
 
 func GetConfig(src ...config.Src) (*Config, error) {

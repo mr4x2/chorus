@@ -44,6 +44,7 @@ database:
   connMaxLifetime: "1h"
   connMaxIdleTime: "15m"
   logLevel: "warn"
+  useForReplication: false
 storage:
   defaultRegion: "us-east-1" # fallback region. Will be used if origin region is not supported by replication destination
   storages:
@@ -60,6 +61,7 @@ storage:
   #      provider: <Ceph|Minio|AWS|Other see providers list in rclone config> # https://rclone.org/s3/#configuration
   #      isMain: true # <true|false> one of the storages in should be main
   #      healthCheckInterval: 10s
+  #      healthCheckEnabled: true # set false to disable health checks (useful for misconfigured storages)
   #      httpTimeout: 1m
   #      isSecure: true #set false for http address
   #      rateLimit:
@@ -78,6 +80,7 @@ storage:
   #      provider: <Ceph|Minio|AWS|Other see providers list in rclone config> # https://rclone.org/s3/#configuration
   #      isMain: false # <true|false> one of the storages in should be main
   #      healthCheckInterval: 10s
+  #      healthCheckEnabled: true # set false to disable health checks (useful for misconfigured storages)
   #      httpTimeout: 1m
   #      isSecure: true #set false for http address
   #      rateLimit:
