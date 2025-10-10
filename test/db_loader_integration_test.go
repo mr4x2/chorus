@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 
 	appdb "github.com/clyso/chorus/pkg/db"
+	"github.com/clyso/chorus/pkg/log"
 	repodb "github.com/clyso/chorus/pkg/repository/db"
 )
 
@@ -43,8 +44,12 @@ func TestDBLoader_Integration(t *testing.T) {
 	// Clean up any existing test data
 	cleanupTestData(ctx, gdb)
 
-	_ = repodb.NewStorageRepository(gdb) // covered implicitly via loader preloads
-	jobRepo := repodb.NewReplicateJobRepository(gdb)
+	_ = repodb.NewStorageRepository(gdb, repodb.DefaultResilienceConfig(), log.GetLogger(&log.Config{
+		Level: "warn",
+	}, "test", "test")) // covered implicitly via loader preloads
+	jobRepo := repodb.NewReplicateJobRepository(gdb, repodb.DefaultResilienceConfig(), log.GetLogger(&log.Config{
+		Level: "warn",
+	}, "test", "test"))
 
 	// Seed minimal data
 	projectID := uuid.New()
@@ -97,7 +102,9 @@ func TestDBLoader_Integration(t *testing.T) {
 	}
 
 	// Loader
-	loader := repodb.NewConfigLoader(gdb, time.Minute)
+	loader := repodb.NewConfigLoader(gdb, time.Minute, repodb.DefaultResilienceConfig(), log.GetLogger(&log.Config{
+		Level: "warn",
+	}, "test", "test"))
 	cfg, err := loader.LoadConfig(ctx, jobID)
 	if err != nil {
 		t.Fatalf("load config: %v", err)

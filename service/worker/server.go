@@ -223,8 +223,36 @@ func Start(ctx context.Context, app dom.AppInfo, conf *Config) error {
 
 	var configSource config.ConfigSource
 	if useDB {
-		// Create DB-backed config source
-		loader := ldb.NewConfigLoader(gdb, time.Minute*5)
+		// Create DB-backed config source with resilience
+		resilienceConfig := ldb.DefaultResilienceConfig()
+		if conf.Database.Resilience != nil {
+			// Override defaults with config values
+			if conf.Database.Resilience.MaxRetries > 0 {
+				resilienceConfig.MaxRetries = conf.Database.Resilience.MaxRetries
+			}
+			if conf.Database.Resilience.RetryDelay > 0 {
+				resilienceConfig.RetryDelay = conf.Database.Resilience.RetryDelay
+			}
+			if conf.Database.Resilience.RetryMultiplier > 0 {
+				resilienceConfig.RetryMultiplier = conf.Database.Resilience.RetryMultiplier
+			}
+			if conf.Database.Resilience.MaxRetryDelay > 0 {
+				resilienceConfig.MaxRetryDelay = conf.Database.Resilience.MaxRetryDelay
+			}
+			if conf.Database.Resilience.FailureThreshold > 0 {
+				resilienceConfig.FailureThreshold = conf.Database.Resilience.FailureThreshold
+			}
+			if conf.Database.Resilience.RecoveryTimeout > 0 {
+				resilienceConfig.RecoveryTimeout = conf.Database.Resilience.RecoveryTimeout
+			}
+			if conf.Database.Resilience.HalfOpenMaxCalls > 0 {
+				resilienceConfig.HalfOpenMaxCalls = conf.Database.Resilience.HalfOpenMaxCalls
+			}
+			if conf.Database.Resilience.OperationTimeout > 0 {
+				resilienceConfig.OperationTimeout = conf.Database.Resilience.OperationTimeout
+			}
+		}
+		loader := ldb.NewConfigLoader(gdb, time.Minute*5, resilienceConfig, logger)
 		dbSource := config.NewDBSource(loader, metricsSvc, tp)
 		yamlSource := config.NewYAMLSource(s3Clients, metricsSvc, tp)
 		configSource = config.NewUnifiedSource(yamlSource, dbSource, useDB)

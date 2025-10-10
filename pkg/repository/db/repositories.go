@@ -19,79 +19,130 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 )
 
-type StorageRepository struct{ db *gorm.DB }
+type StorageRepository struct {
+	db *ResilientDB
+}
 
-func NewStorageRepository(db *gorm.DB) *StorageRepository { return &StorageRepository{db: db} }
+func NewStorageRepository(db *gorm.DB, config ResilienceConfig, logger zerolog.Logger) *StorageRepository {
+	return &StorageRepository{db: NewResilientDB(db, config, logger)}
+}
 
 func (r *StorageRepository) GetByID(ctx context.Context, id uuid.UUID) (*Storage, error) {
 	var s Storage
-	if err := r.db.WithContext(ctx).First(&s, "id = ?", id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+	var result *Storage
+
+	err := r.db.ExecuteWithRetry(ctx, func(ctx context.Context) error {
+		if err := r.db.GetDB().WithContext(ctx).First(&s, "id = ?", id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				result = nil
+				return nil
+			}
+			return err
 		}
-		return nil, err
-	}
-	return &s, nil
+		result = &s
+		return nil
+	})
+
+	return result, err
 }
 
 func (r *StorageRepository) GetByName(ctx context.Context, name string) (*Storage, error) {
 	var s Storage
-	if err := r.db.WithContext(ctx).First(&s, "name = ?", name).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+	var result *Storage
+
+	err := r.db.ExecuteWithRetry(ctx, func(ctx context.Context) error {
+		if err := r.db.GetDB().WithContext(ctx).First(&s, "name = ?", name).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				result = nil
+				return nil
+			}
+			return err
 		}
-		return nil, err
-	}
-	return &s, nil
+		result = &s
+		return nil
+	})
+
+	return result, err
 }
 
 func (r *StorageRepository) GetByProjectID(ctx context.Context, projectID uuid.UUID) ([]*Storage, error) {
 	var storages []*Storage
-	if err := r.db.WithContext(ctx).Where("project_id = ?", projectID).Find(&storages).Error; err != nil {
-		return nil, err
-	}
-	return storages, nil
+	var result []*Storage
+
+	err := r.db.ExecuteWithRetry(ctx, func(ctx context.Context) error {
+		if err := r.db.GetDB().WithContext(ctx).Where("project_id = ?", projectID).Find(&storages).Error; err != nil {
+			return err
+		}
+		result = storages
+		return nil
+	})
+
+	return result, err
 }
 
-type ReplicateJobRepository struct{ db *gorm.DB }
+type ReplicateJobRepository struct {
+	db *ResilientDB
+}
 
-func NewReplicateJobRepository(db *gorm.DB) *ReplicateJobRepository {
-	return &ReplicateJobRepository{db: db}
+func NewReplicateJobRepository(db *gorm.DB, config ResilienceConfig, logger zerolog.Logger) *ReplicateJobRepository {
+	return &ReplicateJobRepository{db: NewResilientDB(db, config, logger)}
 }
 
 func (r *ReplicateJobRepository) GetByID(ctx context.Context, id uuid.UUID) (*ReplicateJob, error) {
 	var j ReplicateJob
-	if err := r.db.WithContext(ctx).Preload("FromStorage").Preload("ToStorage").First(&j, "id = ?", id).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+	var result *ReplicateJob
+
+	err := r.db.ExecuteWithRetry(ctx, func(ctx context.Context) error {
+		if err := r.db.GetDB().WithContext(ctx).Preload("FromStorage").Preload("ToStorage").First(&j, "id = ?", id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				result = nil
+				return nil
+			}
+			return err
 		}
-		return nil, err
-	}
-	return &j, nil
+		result = &j
+		return nil
+	})
+
+	return result, err
 }
 
 func (r *ReplicateJobRepository) GetByProjectID(ctx context.Context, projectID uuid.UUID) ([]*ReplicateJob, error) {
 	var jobs []*ReplicateJob
-	if err := r.db.WithContext(ctx).Preload("FromStorage").Preload("ToStorage").Where("project_id = ?", projectID).Find(&jobs).Error; err != nil {
-		return nil, err
-	}
-	return jobs, nil
+	var result []*ReplicateJob
+
+	err := r.db.ExecuteWithRetry(ctx, func(ctx context.Context) error {
+		if err := r.db.GetDB().WithContext(ctx).Preload("FromStorage").Preload("ToStorage").Where("project_id = ?", projectID).Find(&jobs).Error; err != nil {
+			return err
+		}
+		result = jobs
+		return nil
+	})
+
+	return result, err
 }
 
 func (r *ReplicateJobRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
-	return r.db.WithContext(ctx).Model(&ReplicateJob{}).Where("id = ?", id).Update("status", status).Error
+	return r.db.ExecuteWithRetry(ctx, func(ctx context.Context) error {
+		return r.db.GetDB().WithContext(ctx).Model(&ReplicateJob{}).Where("id = ?", id).Update("status", status).Error
+	})
 }
 
 func (r *ReplicateJobRepository) UpdateStatusWithReason(ctx context.Context, id uuid.UUID, status, reason string) error {
-	return r.db.WithContext(ctx).Model(&ReplicateJob{}).Where("id = ?", id).Updates(map[string]any{
-		"status":        status,
-		"status_reason": reason,
-	}).Error
+	return r.db.ExecuteWithRetry(ctx, func(ctx context.Context) error {
+		return r.db.GetDB().WithContext(ctx).Model(&ReplicateJob{}).Where("id = ?", id).Updates(map[string]any{
+			"status":        status,
+			"status_reason": reason,
+		}).Error
+	})
 }
 
 func (r *ReplicateJobRepository) Create(ctx context.Context, job *ReplicateJob) error {
-	return r.db.WithContext(ctx).Create(job).Error
+	return r.db.ExecuteWithRetry(ctx, func(ctx context.Context) error {
+		return r.db.GetDB().WithContext(ctx).Create(job).Error
+	})
 }

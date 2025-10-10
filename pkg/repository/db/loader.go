@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 )
 
@@ -65,9 +66,9 @@ type StorageConfig struct {
 }
 
 // NewConfigLoader creates a new config loader with caching
-func NewConfigLoader(db *gorm.DB, cacheTTL time.Duration) *ConfigLoader {
-	storageRepo := NewStorageRepository(db)
-	jobRepo := NewReplicateJobRepository(db)
+func NewConfigLoader(db *gorm.DB, cacheTTL time.Duration, config ResilienceConfig, logger zerolog.Logger) *ConfigLoader {
+	storageRepo := NewStorageRepository(db, config, logger)
+	jobRepo := NewReplicateJobRepository(db, config, logger)
 
 	return &ConfigLoader{
 		db:          db,

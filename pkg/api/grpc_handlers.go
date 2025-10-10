@@ -719,7 +719,7 @@ func (h *handlers) validateBucketReplication(ctx context.Context, req *pb.AddBuc
 		// Parse and validate job ID format
 		jobID, err := uuid.Parse(*req.JobId)
 		if err != nil {
-			return nil, fmt.Errorf("%w: invalid job ID format: %v", dom.ErrInvalidArg, err)
+			return nil, fmt.Errorf("%w: invalid job ID format: %w", dom.ErrInvalidArg, err)
 		}
 
 		// If config source is available, validate job exists and is in correct state
@@ -728,13 +728,13 @@ func (h *handlers) validateBucketReplication(ctx context.Context, req *pb.AddBuc
 			if err != nil {
 				return nil, fmt.Errorf("job validation failed: %w", err)
 			}
-			
+
 			// Validate job is in executable state
 			if config.Status != "pending" && config.Status != "running" {
 				return nil, fmt.Errorf("%w: job %s is not in executable state (status: %s)", dom.ErrInvalidArg, jobID, config.Status)
 			}
 		}
-		
+
 		return &emptypb.Empty{}, nil
 	}
 
@@ -779,7 +779,7 @@ func (h *handlers) addBucketReplicationByJobID(ctx context.Context, req *pb.AddB
 	// Parse job ID
 	jobID, err := uuid.Parse(*req.JobId)
 	if err != nil {
-		return nil, fmt.Errorf("%w: invalid job ID format: %v", dom.ErrInvalidArg, err)
+		return nil, fmt.Errorf("%w: invalid job ID format: %w", dom.ErrInvalidArg, err)
 	}
 
 	// Load job configuration from database
@@ -806,9 +806,14 @@ func (h *handlers) addBucketReplicationByJobID(ctx context.Context, req *pb.AddB
 		FromStorage: config.FromStorage.Name,
 		FromBucket:  config.Bucket,
 		ToStorage:   config.ToStorage.Name,
-		ToBucket:    func() string { if config.ToBucket != "" { return config.ToBucket }; return config.Bucket }(),
+		ToBucket: func() string {
+			if config.ToBucket != "" {
+				return config.ToBucket
+			}
+			return config.Bucket
+		}(),
 	}
-	
+
 	task := tasks.BucketCreatePayload{
 		Bucket:   config.Bucket,
 		Location: "",
@@ -817,13 +822,15 @@ func (h *handlers) addBucketReplicationByJobID(ctx context.Context, req *pb.AddB
 	// Set identifiers on the task payload
 	task.SetJobID(jobID)
 	task.SetReplicationID(entity.UniversalFromBucketReplication(replID))
-	
+
 	// Enqueue the task
 	err = h.queueSvc.EnqueueTask(ctx, task)
 	if err != nil {
 		// If task enqueue fails, update job status back to failed with a truncated reason (<=255 chars)
 		reason := fmt.Sprintf("failed to enqueue task: %v", err)
-		if len(reason) > 255 { reason = reason[:255] }
+		if len(reason) > 255 {
+			reason = reason[:255]
+		}
 		updateErr := h.configSource.UpdateJobStatusWithReason(ctx, jobID, "failed", reason)
 		if updateErr != nil {
 			zerolog.Ctx(ctx).Error().Err(updateErr).Msg("failed to update job status after task enqueue failure")

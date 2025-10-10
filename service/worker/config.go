@@ -101,6 +101,25 @@ type Database struct {
 	LogLevel        string        `yaml:"logLevel"`
 	// When true, replication should use DB-backed configs (job-id flow)
 	UseForReplication bool `yaml:"useForReplication"`
+
+	// Resilience configuration
+	Resilience *ResilienceConfig `yaml:"resilience,omitempty"`
+}
+
+type ResilienceConfig struct {
+	// Retry configuration
+	MaxRetries      int           `yaml:"maxRetries"`
+	RetryDelay      time.Duration `yaml:"retryDelay"`
+	RetryMultiplier float64       `yaml:"retryMultiplier"`
+	MaxRetryDelay   time.Duration `yaml:"maxRetryDelay"`
+
+	// Circuit breaker configuration
+	FailureThreshold int           `yaml:"failureThreshold"`
+	RecoveryTimeout  time.Duration `yaml:"recoveryTimeout"`
+	HalfOpenMaxCalls int           `yaml:"halfOpenMaxCalls"`
+
+	// Timeout configuration
+	OperationTimeout time.Duration `yaml:"operationTimeout"`
 }
 
 func GetConfig(src ...config.Src) (*Config, error) {

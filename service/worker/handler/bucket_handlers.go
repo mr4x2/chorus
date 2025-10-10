@@ -99,11 +99,11 @@ func (s *svc) HandleBucketCreate(ctx context.Context, t *asynq.Task) (err error)
 		Prefix:    "",
 		Versioned: shouldListVersions,
 	}
-    task.SetReplicationID(replicationID)
-    // propagate job id so downstream handlers can resolve DB creds
-    if jobID := p.GetJobID(); jobID != nil {
-        task.SetJobID(*jobID)
-    }
+	task.SetReplicationID(replicationID)
+	// propagate job id so downstream handlers can resolve DB creds
+	if jobID := p.GetJobID(); jobID != nil {
+		task.SetJobID(*jobID)
+	}
 	err = s.queueSvc.EnqueueTask(ctx, task)
 	if err != nil {
 		return fmt.Errorf("create bucket: unable to create list obj task: %w", err)
