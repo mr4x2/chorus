@@ -1,0 +1,60 @@
+# Production Environment Configuration
+# This configuration enables database-backed replication for production
+
+api:
+  enabled: true
+  grpcPort: 9670
+  httpPort: 9671
+  secure: true # Use TLS in production
+
+log:
+  json: true # JSON logging for production
+  level: warn # Reduced logging for performance
+
+metrics:
+  enabled: true
+  port: 9090
+
+database:
+  # Production database connection
+  host: "prod-db.example.com"
+  port: 5432
+  user: "chorus_prod"
+  password: "${DB_PASSWORD}" # Use environment variable
+  name: "chorus_prod"
+  sslmode: "require" # Require SSL in production
+  
+  # Connection pool settings optimized for production
+  maxOpenConns: 100
+  maxIdleConns: 50
+  connMaxLifetime: "4h"
+  connMaxIdleTime: "1h"
+  logLevel: "error" # Minimal logging for performance
+  
+  # Enable database-backed replication
+  useForReplication: true
+  
+  # Resilience configuration optimized for production
+  resilience:
+    maxRetries: 3
+    retryDelay: "100ms"
+    retryMultiplier: 2.0
+    maxRetryDelay: "5s"
+    failureThreshold: 5
+    recoveryTimeout: "30s"
+    halfOpenMaxCalls: 3
+    operationTimeout: "10s"
+
+trace:
+  enabled: true
+  endpoint: "http://jaeger-prod:14268/api/traces"
+
+redis:
+  address: "prod-redis:6379"
+
+features:
+  tagging: true
+  acl: true
+  lifecycle: true
+  policy: true
+  preserveACLGrants: true

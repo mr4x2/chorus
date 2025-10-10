@@ -1,0 +1,60 @@
+# Staging Environment Configuration
+# This configuration enables database-backed replication for staging testing
+
+api:
+  enabled: true
+  grpcPort: 9670
+  httpPort: 9671
+  secure: true # Use TLS in staging
+
+log:
+  json: true # JSON logging for staging
+  level: info
+
+metrics:
+  enabled: true
+  port: 9090
+
+database:
+  # Staging database connection
+  host: "staging-db.example.com"
+  port: 5432
+  user: "chorus_staging"
+  password: "${DB_PASSWORD}" # Use environment variable
+  name: "chorus_staging"
+  sslmode: "require" # Require SSL in staging
+  
+  # Connection pool settings for staging
+  maxOpenConns: 30
+  maxIdleConns: 15
+  connMaxLifetime: "2h"
+  connMaxIdleTime: "30m"
+  logLevel: "warn"
+  
+  # Enable database-backed replication
+  useForReplication: true
+  
+  # Resilience configuration for staging
+  resilience:
+    maxRetries: 5
+    retryDelay: "200ms"
+    retryMultiplier: 2.0
+    maxRetryDelay: "10s"
+    failureThreshold: 10
+    recoveryTimeout: "60s"
+    halfOpenMaxCalls: 5
+    operationTimeout: "15s"
+
+trace:
+  enabled: true
+  endpoint: "http://jaeger-staging:14268/api/traces"
+
+redis:
+  address: "staging-redis:6379"
+
+features:
+  tagging: true
+  acl: true
+  lifecycle: true
+  policy: true
+  preserveACLGrants: true

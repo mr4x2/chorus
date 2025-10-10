@@ -1,0 +1,60 @@
+# Development Environment Configuration
+# This configuration enables database-backed replication for development testing
+
+api:
+  enabled: true
+  grpcPort: 9670
+  httpPort: 9671
+  secure: false
+
+log:
+  json: false # Console logging for development
+  level: debug # Verbose logging for debugging
+
+metrics:
+  enabled: true
+  port: 9090
+
+database:
+  # Development database connection
+  host: "localhost"
+  port: 5432
+  user: "chorus_dev"
+  password: "dev_password"
+  name: "chorus_dev"
+  sslmode: "disable"
+  
+  # Connection pool settings for development
+  maxOpenConns: 10
+  maxIdleConns: 5
+  connMaxLifetime: "1h"
+  connMaxIdleTime: "15m"
+  logLevel: "info" # Verbose logging for debugging
+  
+  # Enable database-backed replication
+  useForReplication: true
+  
+  # Resilience configuration for development
+  resilience:
+    maxRetries: 3
+    retryDelay: "100ms"
+    retryMultiplier: 2.0
+    maxRetryDelay: "5s"
+    failureThreshold: 5
+    recoveryTimeout: "30s"
+    halfOpenMaxCalls: 3
+    operationTimeout: "10s"
+
+trace:
+  enabled: false
+  endpoint: # No tracing in development
+
+redis:
+  address: "localhost:6379"
+
+features:
+  tagging: true # Enable all features for testing
+  acl: true
+  lifecycle: true
+  policy: true
+  preserveACLGrants: true

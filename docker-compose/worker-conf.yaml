@@ -23,6 +23,19 @@ database:
   connMaxIdleTime: "15m"
   logLevel: "warn"
   useForReplication: true
+  # Resilience configuration for database operations
+  resilience:
+    # Retry configuration
+    maxRetries: 3
+    retryDelay: "100ms"
+    retryMultiplier: 2.0
+    maxRetryDelay: "5s"
+    # Circuit breaker configuration
+    failureThreshold: 5
+    recoveryTimeout: "30s"
+    halfOpenMaxCalls: 3
+    # Timeout configuration
+    operationTimeout: "10s"
 trace:
   enabled: false
   endpoint: # url to Jaeger or other open trace provider

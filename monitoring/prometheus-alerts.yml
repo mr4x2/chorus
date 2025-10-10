@@ -1,0 +1,208 @@
+# Prometheus alerting rules for database-backed replication
+# These alerts monitor the health and performance of the database-backed replication system
+
+groups:
+  - name: chorus-database-alerts
+    rules:
+      # Database connectivity alerts
+      - alert: DatabaseDown
+        expr: up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: database
+          component: postgres
+        annotations:
+          summary: "Database is down"
+          description: "PostgreSQL database has been down for more than 1 minute"
+          runbook_url: "https://docs.example.com/runbooks/database-down"
+
+      - alert: DatabaseConnectionHigh
+        expr: db_connections_active / db_connections_max > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: database
+          component: connection-pool
+        annotations:
+          summary: "Database connection pool near exhaustion"
+          description: "Database connection pool is {{ $value | humanizePercentage }} full"
+          runbook_url: "https://docs.example.com/runbooks/connection-pool-exhaustion"
+
+      # Circuit breaker alerts
+      - alert: CircuitBreakerOpen
+        expr: db_circuit_breaker_state == 1
+        for: 2m
+        labels:
+          severity: critical
+          service: database
+          component: circuit-breaker
+        annotations:
+          summary: "Database circuit breaker is open"
+          description: "Database circuit breaker has been open for more than 2 minutes"
+          runbook_url: "https://docs.example.com/runbooks/circuit-breaker-open"
+
+      - alert: CircuitBreakerHalfOpen
+        expr: db_circuit_breaker_state == 2
+        for: 1m
+        labels:
+          severity: warning
+          service: database
+          component: circuit-breaker
+        annotations:
+          summary: "Database circuit breaker is half-open"
+          description: "Database circuit breaker is in half-open state"
+          runbook_url: "https://docs.example.com/runbooks/circuit-breaker-half-open"
+
+      # Database operation alerts
+      - alert: HighDatabaseErrorRate
+        expr: rate(db_operation_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: database
+          component: operations
+        annotations:
+          summary: "High database error rate"
+          description: "Database error rate is {{ $value | humanize }} errors per second"
+          runbook_url: "https://docs.example.com/runbooks/high-database-error-rate"
+
+      - alert: HighDatabaseRetryRate
+        expr: rate(db_retries_total[5m]) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          service: database
+          component: retries
+        annotations:
+          summary: "High database retry rate"
+          description: "Database retry rate is {{ $value | humanize }} retries per second"
+          runbook_url: "https://docs.example.com/runbooks/high-database-retry-rate"
+
+      - alert: SlowDatabaseOperations
+        expr: histogram_quantile(0.95, rate(db_operation_duration_seconds_bucket[5m])) > 5
+        for: 10m
+        labels:
+          severity: warning
+          service: database
+          component: performance
+        annotations:
+          summary: "Slow database operations"
+          description: "95th percentile of database operations is {{ $value }}s"
+          runbook_url: "https://docs.example.com/runbooks/slow-database-operations"
+
+  - name: chorus-replication-alerts
+    rules:
+      # Replication job alerts
+      - alert: HighReplicationFailureRate
+        expr: rate(worker_failed_tasks_total{task_type=~".*migration.*"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: replication
+          component: jobs
+        annotations:
+          summary: "High replication failure rate"
+          description: "Replication failure rate is {{ $value | humanize }} failures per second"
+          runbook_url: "https://docs.example.com/runbooks/high-replication-failure-rate"
+
+      - alert: ReplicationJobsStuck
+        expr: worker_in_progress_tasks{task_type=~".*migration.*"} > 10
+        for: 30m
+        labels:
+          severity: warning
+          service: replication
+          component: jobs
+        annotations:
+          summary: "Replication jobs appear to be stuck"
+          description: "{{ $value }} replication jobs have been in progress for more than 30 minutes"
+          runbook_url: "https://docs.example.com/runbooks/replication-jobs-stuck"
+
+      - alert: SlowReplicationJobs
+        expr: histogram_quantile(0.95, rate(worker_task_duration_seconds_bucket{task_type=~".*migration.*"}[5m])) > 300
+        for: 10m
+        labels:
+          severity: warning
+          service: replication
+          component: performance
+        annotations:
+          summary: "Slow replication jobs"
+          description: "95th percentile of replication jobs is {{ $value }}s"
+          runbook_url: "https://docs.example.com/runbooks/slow-replication-jobs"
+
+      # Cache alerts
+      - alert: LowCacheHitRate
+        expr: rate(db_cache_hits_total[5m]) / (rate(db_cache_hits_total[5m]) + rate(db_cache_misses_total[5m])) < 0.8
+        for: 10m
+        labels:
+          severity: warning
+          service: database
+          component: cache
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value | humanizePercentage }}"
+          runbook_url: "https://docs.example.com/runbooks/low-cache-hit-rate"
+
+  - name: chorus-application-alerts
+    rules:
+      # Application health alerts
+      - alert: WorkerServiceDown
+        expr: up{job="chorus-worker"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: worker
+          component: service
+        annotations:
+          summary: "Worker service is down"
+          description: "Chorus worker service has been down for more than 1 minute"
+          runbook_url: "https://docs.example.com/runbooks/worker-service-down"
+
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes / process_virtual_memory_max_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: worker
+          component: memory
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value | humanizePercentage }}"
+          runbook_url: "https://docs.example.com/runbooks/high-memory-usage"
+
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          service: worker
+          component: cpu
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value | humanizePercentage }}"
+          runbook_url: "https://docs.example.com/runbooks/high-cpu-usage"
+
+      # API alerts
+      - alert: HighAPIErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: api
+          component: http
+        annotations:
+          summary: "High API error rate"
+          description: "API error rate is {{ $value | humanize }} errors per second"
+          runbook_url: "https://docs.example.com/runbooks/high-api-error-rate"
+
+      - alert: SlowAPIResponse
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2
+        for: 10m
+        labels:
+          severity: warning
+          service: api
+          component: performance
+        annotations:
+          summary: "Slow API response"
+          description: "95th percentile of API responses is {{ $value }}s"
+          runbook_url: "https://docs.example.com/runbooks/slow-api-response"

@@ -44,7 +44,20 @@ database:
   connMaxLifetime: "1h"
   connMaxIdleTime: "15m"
   logLevel: "warn"
-  useForReplication: false
+  useForReplication: true
+  # Resilience configuration for database operations
+  resilience:
+    # Retry configuration
+    maxRetries: 3
+    retryDelay: "100ms"
+    retryMultiplier: 2.0
+    maxRetryDelay: "5s"
+    # Circuit breaker configuration
+    failureThreshold: 5
+    recoveryTimeout: "30s"
+    halfOpenMaxCalls: 3
+    # Timeout configuration
+    operationTimeout: "10s"
 storage:
   defaultRegion: "us-east-1" # fallback region. Will be used if origin region is not supported by replication destination
   storages:

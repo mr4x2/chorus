@@ -1,0 +1,9 @@
+{
+  "metadata": {
+    "timestamp": "2025-10-10T04:16:50Z",
+    "source": "docker-compose/worker-conf.yaml",
+    "version": "1.0"
+  },
+  "storages": null,
+  "jobs": {}
+}
