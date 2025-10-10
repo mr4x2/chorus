@@ -18,3 +18,4 @@ standalone/
 build/
 .tools/
 .build
+s3-replication-credentials.yaml
