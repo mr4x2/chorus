@@ -66,10 +66,15 @@ type ConfigSource interface {
 
 	// GetClients returns S3 clients for a replication job
 	GetClients(ctx context.Context, jobID uuid.UUID, user string) (fromClient s3client.Client, toClient s3client.Client, err error)
+
+	// DeleteJob deletes a replication job by ID (no-op if not supported)
+	DeleteJob(ctx context.Context, jobID uuid.UUID) error
 }
 
 // JobStatusUpdater defines the interface for updating job status
 type JobStatusUpdater interface {
 	UpdateJobStatus(ctx context.Context, jobID uuid.UUID, status string) error
 	UpdateJobStatusWithReason(ctx context.Context, jobID uuid.UUID, status, reason string) error
+
+	DeleteJob(ctx context.Context, jobID uuid.UUID) error
 }

@@ -278,6 +278,7 @@ message ReplicationRequest {
   string from = 3;
   string to = 4;
   string to_bucket = 5;
+  optional string job_id = 6;
 }
 
 message ListUserReplicationsResponse {

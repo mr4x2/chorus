@@ -97,3 +97,14 @@ func (u *UnifiedSource) GetClientsByJobIDOrName(ctx context.Context, jobID *uuid
 	}
 	return u.yamlSource.GetClientsByName(ctx, user, fromStorage, toStorage)
 }
+
+// DeleteJob deletes a job by ID using the appropriate config source
+func (u *UnifiedSource) DeleteJob(ctx context.Context, jobID uuid.UUID) error {
+	if u.useDB && u.dbSource != nil {
+		return u.dbSource.DeleteJob(ctx, jobID)
+	}
+	if u.yamlSource != nil {
+		return u.yamlSource.DeleteJob(ctx, jobID)
+	}
+	return fmt.Errorf("no config source available for DeleteJob")
+}

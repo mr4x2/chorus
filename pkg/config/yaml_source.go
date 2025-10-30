@@ -59,6 +59,11 @@ func (y *YAMLSource) UpdateJobStatusWithReason(ctx context.Context, jobID uuid.U
 	return fmt.Errorf("YAML source does not support job status updates")
 }
 
+// DeleteJob is not supported for YAMLSource
+func (y *YAMLSource) DeleteJob(ctx context.Context, jobID uuid.UUID) error {
+	return fmt.Errorf("YAML source does not support job deletion")
+}
+
 // GetClients returns S3 clients using storage names (legacy approach)
 func (y *YAMLSource) GetClients(ctx context.Context, jobID uuid.UUID, user string) (fromClient s3client.Client, toClient s3client.Client, err error) {
 	return nil, nil, fmt.Errorf("YAML source requires storage names, not job ID")

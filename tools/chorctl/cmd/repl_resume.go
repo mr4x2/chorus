@@ -28,6 +28,7 @@ import (
 )
 
 var (
+	rrJobID    string
 	rrFrom     string
 	rrTo       string
 	rrUser     string
@@ -39,8 +40,7 @@ var (
 var resumeCmd = &cobra.Command{
 	Use:   "resume",
 	Short: "resumes bucket replication rule",
-	Long: `Example:
-chorctl repl resume -f main -t follower -u admin -b bucket1`,
+	Long:  `Examples:\nchorctl repl resume --job-id=<job-id>\nchorctl repl resume -f main -t follower -u admin -b bucket1`,
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -51,6 +51,19 @@ chorctl repl resume -f main -t follower -u admin -b bucket1`,
 		defer conn.Close()
 		client := pb.NewChorusClient(conn)
 
+		jobIDUsed := rrJobID != ""
+		legacyUsed := rrFrom != "" || rrTo != "" || rrUser != "" || rrBucket != ""
+		if jobIDUsed && legacyUsed {
+			logrus.Fatal("Use either --job-id OR --from/--to/--user/--bucket, not both")
+		}
+		if jobIDUsed {
+			req := &pb.ReplicationRequest{JobId: &rrJobID}
+			_, err = client.ResumeReplication(ctx, req)
+			if err != nil {
+				logrus.WithError(err).Fatal("unable to resume replication by job-id")
+			}
+			return
+		}
 		req := &pb.ReplicationRequest{
 			User:     rrUser,
 			Bucket:   rrBucket,
@@ -63,42 +76,18 @@ chorctl repl resume -f main -t follower -u admin -b bucket1`,
 		}
 		_, err = client.ResumeReplication(ctx, req)
 		if err != nil {
-			logrus.WithError(err).Fatal("unable to add replication")
+			logrus.WithError(err).Fatal("unable to resume replication")
 		}
 	},
 }
 
 func init() {
 	replCmd.AddCommand(resumeCmd)
+	resumeCmd.Flags().StringVar(&rrJobID, "job-id", "", "replicate job UUID (for database-backed replication)")
 	resumeCmd.Flags().StringVarP(&rrFrom, "from", "f", "", "from storage")
 	resumeCmd.Flags().StringVarP(&rrTo, "to", "t", "", "to storage")
 	resumeCmd.Flags().StringVarP(&rrUser, "user", "u", "", "storage user")
 	resumeCmd.Flags().StringVarP(&rrBucket, "bucket", "b", "", "bucket name")
 	resumeCmd.Flags().StringVar(&rrToBucket, "to-bucket", "", "custom destinatin bucket name. Set if destination bucket should have different name from source bucket")
-	err := resumeCmd.MarkFlagRequired("from")
-	if err != nil {
-		logrus.WithError(err).Fatal()
-	}
-	err = resumeCmd.MarkFlagRequired("to")
-	if err != nil {
-		logrus.WithError(err).Fatal()
-	}
-	err = resumeCmd.MarkFlagRequired("user")
-	if err != nil {
-		logrus.WithError(err).Fatal()
-	}
-	err = resumeCmd.MarkFlagRequired("bucket")
-	if err != nil {
-		logrus.WithError(err).Fatal()
-	}
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// addCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// addCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// Don't mark required for legacy flags, let command error if wrong usage
 }

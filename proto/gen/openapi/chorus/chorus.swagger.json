@@ -1336,6 +1336,9 @@
         },
         "toBucket": {
           "type": "string"
+        },
+        "jobId": {
+          "type": "string"
         }
       }
     },

@@ -28,6 +28,7 @@ import (
 )
 
 var (
+	rdJobID    string // job-id flag for delete
 	rdFrom     string
 	rdTo       string
 	rdUser     string
@@ -39,8 +40,7 @@ var (
 var deleteCmd = &cobra.Command{
 	Use:   "delete",
 	Short: "deletes bucket replication rule",
-	Long: `Example:
-chorctl repl delete -f main -t follower -u admin -b bucket1`,
+	Long:  `Examples:\nchorctl repl delete --job-id=<job-id>\nchorctl repl delete -f main -t follower -u admin -b bucket1`,
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -51,6 +51,19 @@ chorctl repl delete -f main -t follower -u admin -b bucket1`,
 		defer conn.Close()
 		client := pb.NewChorusClient(conn)
 
+		jobIDUsed := rdJobID != ""
+		legacyUsed := rdFrom != "" || rdTo != "" || rdUser != "" || rdBucket != ""
+		if jobIDUsed && legacyUsed {
+			logrus.Fatal("Use either --job-id OR --from/--to/--user/--bucket, not both")
+		}
+		if jobIDUsed {
+			req := &pb.ReplicationRequest{JobId: &rdJobID}
+			_, err = client.DeleteReplication(ctx, req)
+			if err != nil {
+				logrus.WithError(err).Fatal("unable to delete replication by job-id")
+			}
+			return
+		}
 		req := &pb.ReplicationRequest{
 			User:     rdUser,
 			Bucket:   rdBucket,
@@ -63,42 +76,18 @@ chorctl repl delete -f main -t follower -u admin -b bucket1`,
 		}
 		_, err = client.DeleteReplication(ctx, req)
 		if err != nil {
-			logrus.WithError(err).Fatal("unable to add replication")
+			logrus.WithError(err).Fatal("unable to delete replication")
 		}
 	},
 }
 
 func init() {
 	replCmd.AddCommand(deleteCmd)
+	deleteCmd.Flags().StringVar(&rdJobID, "job-id", "", "replicate job UUID (for database-backed replication)")
 	deleteCmd.Flags().StringVarP(&rdFrom, "from", "f", "", "from storage")
 	deleteCmd.Flags().StringVarP(&rdTo, "to", "t", "", "to storage")
 	deleteCmd.Flags().StringVarP(&rdUser, "user", "u", "", "storage user")
 	deleteCmd.Flags().StringVarP(&rdBucket, "bucket", "b", "", "bucket name")
 	deleteCmd.Flags().StringVar(&rdToBucket, "to-bucket", "", "custom destinatin bucket name. Set if destination bucket should have different name from source bucket")
-	err := deleteCmd.MarkFlagRequired("from")
-	if err != nil {
-		logrus.WithError(err).Fatal()
-	}
-	err = deleteCmd.MarkFlagRequired("to")
-	if err != nil {
-		logrus.WithError(err).Fatal()
-	}
-	err = deleteCmd.MarkFlagRequired("user")
-	if err != nil {
-		logrus.WithError(err).Fatal()
-	}
-	err = deleteCmd.MarkFlagRequired("bucket")
-	if err != nil {
-		logrus.WithError(err).Fatal()
-	}
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// addCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// addCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// Don't mark required for legacy flags, let command error if wrong usage
 }

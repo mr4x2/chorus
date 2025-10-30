@@ -150,6 +150,17 @@ func (l *ConfigLoader) UpdateJobStatusWithReason(ctx context.Context, jobID uuid
 	return nil
 }
 
+// DeleteJob deletes the replicate job by ID from the database and invalidates cache
+func (l *ConfigLoader) DeleteJob(ctx context.Context, jobID uuid.UUID) error {
+	err := l.jobRepo.DeleteByID(ctx, jobID)
+	if err != nil {
+		return fmt.Errorf("failed to delete job %s: %w", jobID, err)
+	}
+	// Invalidate any cache for this jobID
+	l.cache.Invalidate(jobID)
+	return nil
+}
+
 // storageToConfig converts Storage model to StorageConfig
 func (l *ConfigLoader) storageToConfig(storage *Storage) *StorageConfig {
 	return &StorageConfig{

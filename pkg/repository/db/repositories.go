@@ -146,3 +146,9 @@ func (r *ReplicateJobRepository) Create(ctx context.Context, job *ReplicateJob) 
 		return r.db.GetDB().WithContext(ctx).Create(job).Error
 	})
 }
+
+func (r *ReplicateJobRepository) DeleteByID(ctx context.Context, id uuid.UUID) error {
+	return r.db.ExecuteWithRetry(ctx, func(ctx context.Context) error {
+		return r.db.GetDB().WithContext(ctx).Delete(&ReplicateJob{}, "id = ?", id).Error
+	})
+}

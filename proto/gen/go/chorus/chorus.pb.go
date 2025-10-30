@@ -7,14 +7,15 @@
 package pb
 
 import (
+	reflect "reflect"
+	sync "sync"
+	unsafe "unsafe"
+
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
-	reflect "reflect"
-	sync "sync"
-	unsafe "unsafe"
 )
 
 const (
@@ -1621,6 +1622,7 @@ type ReplicationRequest struct {
 	From          string                 `protobuf:"bytes,3,opt,name=from,proto3" json:"from,omitempty"`
 	To            string                 `protobuf:"bytes,4,opt,name=to,proto3" json:"to,omitempty"`
 	ToBucket      string                 `protobuf:"bytes,5,opt,name=to_bucket,json=toBucket,proto3" json:"to_bucket,omitempty"`
+	JobId         *string                `protobuf:"bytes,6,opt,name=job_id,json=jobId,proto3,oneof" json:"job_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1686,6 +1688,13 @@ func (x *ReplicationRequest) GetTo() string {
 func (x *ReplicationRequest) GetToBucket() string {
 	if x != nil {
 		return x.ToBucket
+	}
+	return ""
+}
+
+func (x *ReplicationRequest) GetJobId() string {
+	if x != nil && x.JobId != nil {
+		return *x.JobId
 	}
 	return ""
 }
@@ -2783,13 +2792,15 @@ const file_chorus_chorus_proto_rawDesc = "" +
 	"\varchived_at\x18\x15 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"archivedAtB\f\n" +
 	"\n" +
-	"_agent_url\"\x81\x01\n" +
+	"_agent_url\"\xa8\x01\n" +
 	"\x12ReplicationRequest\x12\x12\n" +
 	"\x04user\x18\x01 \x01(\tR\x04user\x12\x16\n" +
 	"\x06bucket\x18\x02 \x01(\tR\x06bucket\x12\x12\n" +
 	"\x04from\x18\x03 \x01(\tR\x04from\x12\x0e\n" +
 	"\x02to\x18\x04 \x01(\tR\x02to\x12\x1b\n" +
-	"\tto_bucket\x18\x05 \x01(\tR\btoBucket\"[\n" +
+	"\tto_bucket\x18\x05 \x01(\tR\btoBucket\x12\x1a\n" +
+	"\x06job_id\x18\x06 \x01(\tH\x00R\x05jobId\x88\x01\x01B\t\n" +
+	"\a_job_id\"[\n" +
 	"\x1cListUserReplicationsResponse\x12;\n" +
 	"\freplications\x18\x01 \x03(\v2\x17.chorus.UserReplicationR\freplications\"\xb0\x06\n" +
 	"\x0fUserReplication\x12\x12\n" +
@@ -3084,6 +3095,7 @@ func file_chorus_chorus_proto_init() {
 	file_chorus_chorus_proto_msgTypes[16].OneofWrappers = []any{}
 	file_chorus_chorus_proto_msgTypes[17].OneofWrappers = []any{}
 	file_chorus_chorus_proto_msgTypes[21].OneofWrappers = []any{}
+	file_chorus_chorus_proto_msgTypes[22].OneofWrappers = []any{}
 	file_chorus_chorus_proto_msgTypes[24].OneofWrappers = []any{}
 	file_chorus_chorus_proto_msgTypes[30].OneofWrappers = []any{}
 	file_chorus_chorus_proto_msgTypes[31].OneofWrappers = []any{}

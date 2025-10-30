@@ -28,6 +28,7 @@ import (
 )
 
 var (
+	rpJobID    string
 	rpFrom     string
 	rpTo       string
 	rpUser     string
@@ -39,8 +40,7 @@ var (
 var pauseCmd = &cobra.Command{
 	Use:   "pause",
 	Short: "pauses bucket replication rule",
-	Long: `Example:
-chorctl repl pause -f main -t follower -u admin -b bucket1`,
+	Long:  `Examples:\nchorctl repl pause --job-id=<job-id>\nchorctl repl pause -f main -t follower -u admin -b bucket1`,
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -51,6 +51,21 @@ chorctl repl pause -f main -t follower -u admin -b bucket1`,
 		defer conn.Close()
 		client := pb.NewChorusClient(conn)
 
+		jobIDUsed := rpJobID != ""
+		legacyUsed := rpFrom != "" || rpTo != "" || rpUser != "" || rpBucket != ""
+		if jobIDUsed && legacyUsed {
+			logrus.Fatal("Use either --job-id OR --from/--to/--user/--bucket, not both")
+		}
+		if jobIDUsed {
+			// Use job-id based request (other fields are empty)
+			req := &pb.ReplicationRequest{JobId: &rpJobID}
+			_, err = client.PauseReplication(ctx, req)
+			if err != nil {
+				logrus.WithError(err).Fatal("unable to pause replication by job-id")
+			}
+			return
+		}
+		// Legacy path
 		req := &pb.ReplicationRequest{
 			User:     rpUser,
 			Bucket:   rpBucket,
@@ -63,42 +78,18 @@ chorctl repl pause -f main -t follower -u admin -b bucket1`,
 		}
 		_, err = client.PauseReplication(ctx, req)
 		if err != nil {
-			logrus.WithError(err).Fatal("unable to add replication")
+			logrus.WithError(err).Fatal("unable to pause replication")
 		}
 	},
 }
 
 func init() {
 	replCmd.AddCommand(pauseCmd)
+	pauseCmd.Flags().StringVar(&rpJobID, "job-id", "", "replicate job UUID (for database-backed replication)")
 	pauseCmd.Flags().StringVarP(&rpFrom, "from", "f", "", "from storage")
 	pauseCmd.Flags().StringVarP(&rpTo, "to", "t", "", "to storage")
 	pauseCmd.Flags().StringVarP(&rpUser, "user", "u", "", "storage user")
 	pauseCmd.Flags().StringVarP(&rpBucket, "bucket", "b", "", "bucket name")
 	pauseCmd.Flags().StringVar(&rpToBucket, "to-bucket", "", "custom destinatin bucket name. Set if destination bucket should have different name from source bucket")
-	err := pauseCmd.MarkFlagRequired("from")
-	if err != nil {
-		logrus.WithError(err).Fatal()
-	}
-	err = pauseCmd.MarkFlagRequired("to")
-	if err != nil {
-		logrus.WithError(err).Fatal()
-	}
-	err = pauseCmd.MarkFlagRequired("user")
-	if err != nil {
-		logrus.WithError(err).Fatal()
-	}
-	err = pauseCmd.MarkFlagRequired("bucket")
-	if err != nil {
-		logrus.WithError(err).Fatal()
-	}
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// addCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// addCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	// Don't mark required for legacy flags, now handled conditionally
 }

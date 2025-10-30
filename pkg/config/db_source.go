@@ -88,6 +88,14 @@ func (d *DBSource) UpdateJobStatusWithReason(ctx context.Context, jobID uuid.UUI
 	return d.loader.UpdateJobStatusWithReason(ctx, jobID, status, reason)
 }
 
+// DeleteJob deletes the replicate job from the database by ID
+func (d *DBSource) DeleteJob(ctx context.Context, jobID uuid.UUID) error {
+	if d.loader == nil {
+		return fmt.Errorf("config loader is not initialized")
+	}
+	return d.loader.DeleteJob(ctx, jobID)
+}
+
 // GetClients returns S3 clients built from database configuration
 func (d *DBSource) GetClients(ctx context.Context, jobID uuid.UUID, user string) (fromClient s3client.Client, toClient s3client.Client, err error) {
 	config, err := d.LoadConfig(ctx, jobID)

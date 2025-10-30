@@ -540,6 +540,22 @@ func (h *handlers) DeleteUserReplication(ctx context.Context, req *pb.DeleteUser
 }
 
 func (h *handlers) PauseReplication(ctx context.Context, req *pb.ReplicationRequest) (*emptypb.Empty, error) {
+	if req.JobId != nil && *req.JobId != "" {
+		// DATABASE-BACKED: Pause by job id
+		jobID, err := uuid.Parse(*req.JobId)
+		if err != nil {
+			return nil, fmt.Errorf("invalid job_id: %w", err)
+		}
+		if h.configSource == nil {
+			return nil, fmt.Errorf("config source not available for pause by job-id")
+		}
+		err = h.configSource.UpdateJobStatus(ctx, jobID, "pending")
+		if err != nil {
+			return nil, fmt.Errorf("unable to update replicate job status to pending: %w", err)
+		}
+		return &emptypb.Empty{}, nil
+	}
+	// LEGACY fallback
 	// TODO: change after refactoring grpc API. Discuss if we need separate methods
 	// leave without changes for now to not touch e2e tests too much
 	var id entity.UniversalReplicationID
@@ -562,6 +578,23 @@ func (h *handlers) PauseReplication(ctx context.Context, req *pb.ReplicationRequ
 }
 
 func (h *handlers) ResumeReplication(ctx context.Context, req *pb.ReplicationRequest) (*emptypb.Empty, error) {
+	if req.JobId != nil && *req.JobId != "" {
+		// DATABASE-BACKED: Resume by job id
+		jobID, err := uuid.Parse(*req.JobId)
+		if err != nil {
+			return nil, fmt.Errorf("invalid job_id: %w", err)
+		}
+		if h.configSource == nil {
+			return nil, fmt.Errorf("config source not available for resume by job-id")
+		}
+		err = h.configSource.UpdateJobStatus(ctx, jobID, "running")
+		if err != nil {
+			return nil, fmt.Errorf("unable to update replicate job status to running: %w", err)
+		}
+		// Optionally: enqueue/resume the worker job if required (TBD, see business logic)
+		return &emptypb.Empty{}, nil
+	}
+	// LEGACY fallback
 	// TODO: change after refactoring grpc API. Discuss if we need separate methods
 	// leave without changes for now to not touch e2e tests too much
 	var id entity.UniversalReplicationID
@@ -584,6 +617,22 @@ func (h *handlers) ResumeReplication(ctx context.Context, req *pb.ReplicationReq
 }
 
 func (h *handlers) DeleteReplication(ctx context.Context, req *pb.ReplicationRequest) (*emptypb.Empty, error) {
+	if req.JobId != nil && *req.JobId != "" {
+		// DATABASE-BACKED: Delete by job id
+		jobID, err := uuid.Parse(*req.JobId)
+		if err != nil {
+			return nil, fmt.Errorf("invalid job_id: %w", err)
+		}
+		if h.configSource == nil {
+			return nil, fmt.Errorf("config source not available for delete by job-id")
+		}
+		err = h.configSource.DeleteJob(ctx, jobID)
+		if err != nil {
+			return nil, fmt.Errorf("unable to delete replicate job by job-id: %w", err)
+		}
+		return &emptypb.Empty{}, nil
+	}
+	// LEGACY fallback
 	lock, err := h.userLocker.Lock(ctx, req.User, store.WithDuration(time.Second), store.WithRetry(true))
 	if err != nil {
 		return nil, err
