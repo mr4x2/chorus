@@ -569,6 +569,60 @@ func (h *handlers) jobIDToUniversalReplicationID(ctx context.Context, jobID uuid
 	return id, cfg, nil
 }
 
+// deleteBucketNotificationByReplicationID deletes bucket notification using replicationID
+// This works with database config instead of YAML config, so it doesn't require
+// the user to exist in YAML storage config
+func (h *handlers) deleteBucketNotificationByReplicationID(ctx context.Context, id entity.UniversalReplicationID, cfg *config.RuntimeConfig, bucketPolicy entity.BucketReplicationPolicy) error {
+	if h.configSource == nil {
+		return fmt.Errorf("config source not available")
+	}
+
+	// Get S3 client from database config (not YAML config)
+	// This creates a client with credentials from the database
+	userAlias := cfg.ProjectID.String()
+	fromClient, _, err := h.configSource.GetClients(ctx, cfg.JobID, userAlias)
+	if err != nil {
+		return fmt.Errorf("unable to get S3 client from database config: %w", err)
+	}
+
+	// Get bucket notifications
+	notifications, err := fromClient.S3().GetBucketNotification(ctx, bucketPolicy.FromBucket)
+	if err != nil {
+		return fmt.Errorf("unable to get bucket notifications: %w", err)
+	}
+
+	// Compute notification ID from replicationID (user and bucket)
+	// notificationID format: "chorus-{user}-{bucket}" where dashes are escaped
+	notificationID := fmt.Sprintf("chorus-%s-%s",
+		strings.ReplaceAll(bucketPolicy.User, "-", "--"),
+		strings.ReplaceAll(bucketPolicy.FromBucket, "-", "--"))
+
+	// Find and remove the notification
+	toRemove := -1
+	for i, topic := range notifications.TopicConfigs {
+		if topic.ID == notificationID {
+			toRemove = i
+			break
+		}
+	}
+
+	if toRemove == -1 {
+		// Notification doesn't exist - this is OK, nothing to delete
+		return nil
+	}
+
+	// Remove the notification from the list
+	notifications.TopicConfigs = slices.Delete(notifications.TopicConfigs, toRemove, toRemove+1)
+
+	// Update bucket notifications
+	err = fromClient.S3().SetBucketNotification(ctx, bucketPolicy.FromBucket, notifications)
+	if err != nil {
+		return fmt.Errorf("unable to set bucket notifications: %w", err)
+	}
+
+	return nil
+}
+
 func (h *handlers) PauseReplication(ctx context.Context, req *pb.ReplicationRequest) (*emptypb.Empty, error) {
 	if req.JobId != nil && *req.JobId != "" {
 		// DATABASE-BACKED: Pause by job id
@@ -705,12 +759,16 @@ func (h *handlers) DeleteReplication(ctx context.Context, req *pb.ReplicationReq
 			// we still proceed with cleanup and job deletion
 			err = h.policySvc.DeleteBucketReplication(ctx, bucketPolicy)
 			if err != nil {
+				errMsg := err.Error()
 				// Check if error is NotFound (replication doesn't exist in policy store)
-				// The error might be wrapped multiple times, so we check both errors.Is
-				// and error message string as fallback
+				// The error might be wrappYed multiple times, so we check:
+				// 1. errors.Is for proper error chain traversal
+				// 2. Error message strings as fallback (for Redis "hash map not found" errors)
 				isNotFound := errors.Is(err, dom.ErrNotFound) ||
-					strings.Contains(err.Error(), "NotFound") ||
-					strings.Contains(err.Error(), "not found")
+					strings.Contains(errMsg, "NotFound") ||
+					strings.Contains(errMsg, "not found") ||
+					strings.Contains(errMsg, "hash map not found") ||
+					strings.Contains(errMsg, "unable to get existing replication status")
 				
 				if isNotFound {
 					// Replication doesn't exist in policy store (might not have been started yet)
@@ -743,10 +801,16 @@ func (h *handlers) DeleteReplication(ctx context.Context, req *pb.ReplicationReq
 				zerolog.Ctx(ctx).Warn().Err(err).Msg("unable to clean last listed obj metadata")
 			}
 
-			// Delete bucket notification (same as legacy path)
-			err = h.notificationSvc.DeleteBucketNotification(ctx, bucketPolicy.FromStorage, userAlias, bucketPolicy.FromBucket)
+			// Delete bucket notification using replicationID (for database-backed jobs)
+			// This works with database config instead of YAML config
+			err = h.deleteBucketNotificationByReplicationID(ctx, id, cfg, bucketPolicy)
 			if err != nil {
-				zerolog.Ctx(ctx).Warn().Err(err).Msg("unable to delete agent bucket notification")
+				// Log warning but continue - notification cleanup is best-effort
+				zerolog.Ctx(ctx).Warn().
+					Err(err).
+					Str("job_id", jobID.String()).
+					Str("replication", id.AsString()).
+					Msg("unable to delete bucket notification, skipping")
 			}
 
 			// Delete job from database
