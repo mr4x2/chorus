@@ -539,6 +539,36 @@ func (h *handlers) DeleteUserReplication(ctx context.Context, req *pb.DeleteUser
 	return &emptypb.Empty{}, nil
 }
 
+// jobIDToUniversalReplicationID loads a job config and converts it to UniversalReplicationID
+func (h *handlers) jobIDToUniversalReplicationID(ctx context.Context, jobID uuid.UUID) (entity.UniversalReplicationID, *config.RuntimeConfig, error) {
+	if h.configSource == nil {
+		return entity.UniversalReplicationID{}, nil, fmt.Errorf("config source not available")
+	}
+
+	// Load job configuration from database
+	cfg, err := h.configSource.LoadConfig(ctx, jobID)
+	if err != nil {
+		return entity.UniversalReplicationID{}, nil, fmt.Errorf("failed to load job configuration: %w", err)
+	}
+
+	// Convert to UniversalReplicationID (jobs are always bucket-level)
+	userAlias := cfg.ProjectID.String()
+	toBucket := cfg.ToBucket
+	if toBucket == "" {
+		toBucket = cfg.Bucket
+	}
+	replID := entity.BucketReplicationPolicy{
+		User:        userAlias,
+		FromStorage: cfg.FromStorage.Name,
+		FromBucket:  cfg.Bucket,
+		ToStorage:   cfg.ToStorage.Name,
+		ToBucket:    toBucket,
+	}
+	id := entity.UniversalFromBucketReplication(replID)
+
+	return id, cfg, nil
+}
+
 func (h *handlers) PauseReplication(ctx context.Context, req *pb.ReplicationRequest) (*emptypb.Empty, error) {
 	if req.JobId != nil && *req.JobId != "" {
 		// DATABASE-BACKED: Pause by job id
@@ -546,13 +576,25 @@ func (h *handlers) PauseReplication(ctx context.Context, req *pb.ReplicationRequ
 		if err != nil {
 			return nil, fmt.Errorf("invalid job_id: %w", err)
 		}
-		if h.configSource == nil {
-			return nil, fmt.Errorf("config source not available for pause by job-id")
+
+		// Load config and convert to UniversalReplicationID (following legacy pattern)
+		id, _, err := h.jobIDToUniversalReplicationID(ctx, jobID)
+		if err != nil {
+			return nil, fmt.Errorf("unable to load job configuration: %w", err)
 		}
+
+		// Pause replication using policy service (same as legacy path)
+		err = h.policySvc.PauseReplication(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("unable to pause replication: %w", err)
+		}
+
+		// Update job status in database to keep it in sync
 		err = h.configSource.UpdateJobStatus(ctx, jobID, "pending")
 		if err != nil {
-			return nil, fmt.Errorf("unable to update replicate job status to pending: %w", err)
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("unable to update replicate job status to pending, but replication is paused")
 		}
+
 		return &emptypb.Empty{}, nil
 	}
 	// LEGACY fallback
@@ -584,14 +626,25 @@ func (h *handlers) ResumeReplication(ctx context.Context, req *pb.ReplicationReq
 		if err != nil {
 			return nil, fmt.Errorf("invalid job_id: %w", err)
 		}
-		if h.configSource == nil {
-			return nil, fmt.Errorf("config source not available for resume by job-id")
+
+		// Load config and convert to UniversalReplicationID (following legacy pattern)
+		id, _, err := h.jobIDToUniversalReplicationID(ctx, jobID)
+		if err != nil {
+			return nil, fmt.Errorf("unable to load job configuration: %w", err)
 		}
+
+		// Resume replication using policy service (same as legacy path)
+		err = h.policySvc.ResumeReplication(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("unable to resume replication: %w", err)
+		}
+
+		// Update job status in database to keep it in sync
 		err = h.configSource.UpdateJobStatus(ctx, jobID, "running")
 		if err != nil {
-			return nil, fmt.Errorf("unable to update replicate job status to running: %w", err)
+			zerolog.Ctx(ctx).Warn().Err(err).Msg("unable to update replicate job status to running, but replication is resumed")
 		}
-		// Optionally: enqueue/resume the worker job if required (TBD, see business logic)
+
 		return &emptypb.Empty{}, nil
 	}
 	// LEGACY fallback
@@ -623,13 +676,91 @@ func (h *handlers) DeleteReplication(ctx context.Context, req *pb.ReplicationReq
 		if err != nil {
 			return nil, fmt.Errorf("invalid job_id: %w", err)
 		}
-		if h.configSource == nil {
-			return nil, fmt.Errorf("config source not available for delete by job-id")
-		}
-		err = h.configSource.DeleteJob(ctx, jobID)
+
+		// Load config and convert to UniversalReplicationID (following legacy pattern)
+		id, cfg, err := h.jobIDToUniversalReplicationID(ctx, jobID)
 		if err != nil {
-			return nil, fmt.Errorf("unable to delete replicate job by job-id: %w", err)
+			return nil, fmt.Errorf("unable to load job configuration: %w", err)
 		}
+
+		// Extract bucket replication policy for delete operations
+		bucketPolicy, ok := id.AsBucketID()
+		if !ok {
+			return nil, fmt.Errorf("job %s is not a bucket replication", jobID)
+		}
+
+		// Get user alias from config (same as legacy path uses req.User)
+		userAlias := cfg.ProjectID.String()
+
+		// Lock the user (same as legacy path)
+		lock, err := h.userLocker.Lock(ctx, userAlias, store.WithDuration(time.Second), store.WithRetry(true))
+		if err != nil {
+			return nil, err
+		}
+		defer lock.Release(ctx)
+
+		err = lock.Do(ctx, time.Second, func() error {
+			// Delete replication policy using policy service (same as legacy path)
+			// Note: If replication doesn't exist in policy store (e.g., never started),
+			// we still proceed with cleanup and job deletion
+			err = h.policySvc.DeleteBucketReplication(ctx, bucketPolicy)
+			if err != nil {
+				// Check if error is NotFound (replication doesn't exist in policy store)
+				// The error might be wrapped multiple times, so we check both errors.Is
+				// and error message string as fallback
+				isNotFound := errors.Is(err, dom.ErrNotFound) ||
+					strings.Contains(err.Error(), "NotFound") ||
+					strings.Contains(err.Error(), "not found")
+				
+				if isNotFound {
+					// Replication doesn't exist in policy store (might not have been started yet)
+					// Log warning but continue with cleanup
+					zerolog.Ctx(ctx).Warn().
+						Err(err).
+						Str("job_id", jobID.String()).
+						Str("replication", id.AsString()).
+						Msg("replication policy not found in store, skipping policy deletion but proceeding with cleanup")
+				} else {
+					return fmt.Errorf("%w: unable to delete replication policy", err)
+				}
+			}
+
+			// Delete version metadata (same as legacy path)
+			err = h.versionSvc.DeleteBucketMeta(ctx, meta.ToDest(bucketPolicy.ToStorage, bucketPolicy.ToBucket), bucketPolicy.FromBucket)
+			if err != nil {
+				// Log warning but continue - metadata might not exist
+				if errors.Is(err, dom.ErrNotFound) {
+					zerolog.Ctx(ctx).Warn().Err(err).Msg("version metadata not found, skipping")
+				} else {
+					return fmt.Errorf("%w: unable to delete version metadata", err)
+				}
+			}
+
+			// Clean last listed obj metadata (same as legacy path)
+			err = h.storageSvc.CleanLastListedObj(ctx, bucketPolicy.FromStorage, bucketPolicy.ToStorage, bucketPolicy.FromBucket, bucketPolicy.ToBucket)
+			if err != nil {
+				// Log warning but continue - metadata might not exist
+				zerolog.Ctx(ctx).Warn().Err(err).Msg("unable to clean last listed obj metadata")
+			}
+
+			// Delete bucket notification (same as legacy path)
+			err = h.notificationSvc.DeleteBucketNotification(ctx, bucketPolicy.FromStorage, userAlias, bucketPolicy.FromBucket)
+			if err != nil {
+				zerolog.Ctx(ctx).Warn().Err(err).Msg("unable to delete agent bucket notification")
+			}
+
+			// Delete job from database
+			err = h.configSource.DeleteJob(ctx, jobID)
+			if err != nil {
+				return fmt.Errorf("unable to delete replicate job from database: %w", err)
+			}
+
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+
 		return &emptypb.Empty{}, nil
 	}
 	// LEGACY fallback
