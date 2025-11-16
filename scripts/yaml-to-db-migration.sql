@@ -6,7 +6,7 @@ CREATE TEMP TABLE IF NOT EXISTS temp_storages (
     name VARCHAR(255),
     address VARCHAR(1024),
     provider VARCHAR(64),
-    is_main BOOLEAN,
+    type VARCHAR(64),
     is_secure BOOLEAN,
     default_region VARCHAR(128),
     health_check_interval_ms BIGINT,
@@ -32,7 +32,7 @@ CREATE OR REPLACE FUNCTION insert_storage_from_yaml(
     p_name VARCHAR(255),
     p_address VARCHAR(1024),
     p_provider VARCHAR(64),
-    p_is_main BOOLEAN,
+    p_type VARCHAR(64),
     p_is_secure BOOLEAN,
     p_default_region VARCHAR(128),
     p_health_check_interval_ms BIGINT DEFAULT 10000,
@@ -52,11 +52,11 @@ BEGIN
     
     -- Insert storage
     INSERT INTO storage (
-        id, name, address, provider, is_main, is_secure, default_region,
+        id, name, address, provider, type, is_secure, default_region,
         health_check_interval_ms, health_check_enabled, http_timeout_ms,
         rate_limit_enabled, rate_limit_rpm, project_id, access_key_id, secret_access_key
     ) VALUES (
-        storage_id, p_name, p_address, p_provider, p_is_main, p_is_secure, p_default_region,
+        storage_id, p_name, p_address, p_provider, COALESCE(NULLIF(TRIM(p_type), ''), 'both'), p_is_secure, p_default_region,
         p_health_check_interval_ms, p_health_check_enabled, p_http_timeout_ms,
         p_rate_limit_enabled, p_rate_limit_rpm, p_project_id, p_access_key_id, p_secret_access_key
     );
@@ -112,7 +112,7 @@ $$ LANGUAGE plpgsql;
 --     'main-storage',
 --     'http://localhost:9000',
 --     'minio',
---     true,
+--     'source',
 --     false,
 --     'us-east-1',
 --     10000,

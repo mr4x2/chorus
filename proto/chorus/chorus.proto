@@ -170,7 +170,7 @@ message Storage {
   }
   // some human-readable alias for storage config
   string name = 1;
-  bool is_main = 2;
+  string type = 2;
   // ex: s3.clyso.com
   string address = 3;
   // s3 storage provider <Ceph|Minio|AWS|Other>

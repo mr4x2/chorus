@@ -24,6 +24,7 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/clyso/chorus/pkg/dom"
 	"github.com/clyso/chorus/pkg/metrics"
 	ldb "github.com/clyso/chorus/pkg/repository/db"
 	"github.com/clyso/chorus/pkg/s3"
@@ -109,7 +110,7 @@ func (d *DBSource) GetClients(ctx context.Context, jobID uuid.UUID, user string)
 		"from_runtime": {
 			Address:             config.FromStorage.Address,
 			Provider:            config.FromStorage.Provider,
-			IsMain:              config.FromStorage.IsMain,
+			Type:                dom.StorageType(config.FromStorage.Type),
 			DefaultRegion:       config.FromStorage.DefaultRegion,
 			HealthCheckInterval: time.Duration(config.FromStorage.HealthCheckIntervalMs) * time.Millisecond,
 			HealthCheckEnabled:  config.FromStorage.HealthCheckEnabled,
@@ -129,7 +130,7 @@ func (d *DBSource) GetClients(ctx context.Context, jobID uuid.UUID, user string)
 		"to_runtime": {
 			Address:             config.ToStorage.Address,
 			Provider:            config.ToStorage.Provider,
-			IsMain:              config.ToStorage.IsMain,
+			Type:                dom.StorageType(config.ToStorage.Type),
 			DefaultRegion:       config.ToStorage.DefaultRegion,
 			HealthCheckInterval: time.Duration(config.ToStorage.HealthCheckIntervalMs) * time.Millisecond,
 			HealthCheckEnabled:  config.ToStorage.HealthCheckEnabled,
@@ -176,7 +177,7 @@ func convertStorageConfig(dbStorage *ldb.StorageConfig) *Storage {
 		Name:                  dbStorage.Name,
 		Address:               dbStorage.Address,
 		Provider:              dbStorage.Provider,
-		IsMain:                dbStorage.IsMain,
+		Type:                  string(dbStorage.Type),
 		IsSecure:              dbStorage.IsSecure,
 		DefaultRegion:         dbStorage.DefaultRegion,
 		HealthCheckIntervalMs: dbStorage.HealthCheckIntervalMs,

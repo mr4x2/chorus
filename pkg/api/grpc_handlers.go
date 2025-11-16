@@ -82,6 +82,7 @@ func GrpcHandlers(storages *s3.StorageConfig, s3clients s3client.Service, queueS
 var _ pb.ChorusServer = &handlers{}
 
 type handlers struct {
+	pb.UnimplementedChorusServer
 	storages                *s3.StorageConfig
 	s3clients               s3client.Service
 	queueSvc                tasks.QueueService
@@ -274,12 +275,16 @@ func (h *handlers) GetStorages(_ context.Context, _ *emptypb.Empty) (*pb.GetStor
 			}
 			return strings.Compare(a.AccessKey, b.AccessKey)
 		})
+		storageType := string(stor.Type)
+		if storageType == "" {
+			storageType = string(dom.StorageTypeBoth)
+		}
 		res = append(res, &pb.Storage{
 			Name:        name,
+			Type:        storageType,
 			Address:     stor.Address,
 			Provider:    pb.Storage_Provider(pb.Storage_Provider_value[stor.Provider]),
 			Credentials: creds,
-			IsMain:      stor.IsMain,
 		})
 	}
 	return &pb.GetStoragesResponse{Storages: res}, nil
@@ -769,7 +774,7 @@ func (h *handlers) DeleteReplication(ctx context.Context, req *pb.ReplicationReq
 					strings.Contains(errMsg, "not found") ||
 					strings.Contains(errMsg, "hash map not found") ||
 					strings.Contains(errMsg, "unable to get existing replication status")
-				
+
 				if isNotFound {
 					// Replication doesn't exist in policy store (might not have been started yet)
 					// Log warning but continue with cleanup
@@ -1035,6 +1040,21 @@ func (h *handlers) addBucketReplicationByJobID(ctx context.Context, req *pb.AddB
 	// Validate job is in executable state
 	if config.Status != "pending" && config.Status != "running" {
 		return nil, fmt.Errorf("%w: job %s is not in executable state (status: %s)", dom.ErrInvalidArg, jobID, config.Status)
+	}
+
+	// Validate storage types are compatible with replication direction
+	if config.FromStorage != nil && config.ToStorage != nil {
+		fromType := dom.StorageType(config.FromStorage.Type)
+		toType := dom.StorageType(config.ToStorage.Type)
+
+		// Validate from storage can be used as source
+		if fromType != dom.StorageTypeSource && fromType != dom.StorageTypeBoth {
+			return nil, fmt.Errorf("%w: from storage %s (type: %s) cannot be used as source", dom.ErrInvalidArg, config.FromStorage.Name, fromType)
+		}
+		// Validate to storage can be used as destination
+		if toType != dom.StorageTypeDestination && toType != dom.StorageTypeBoth {
+			return nil, fmt.Errorf("%w: to storage %s (type: %s) cannot be used as destination", dom.ErrInvalidArg, config.ToStorage.Name, toType)
+		}
 	}
 
 	// Update job status to running

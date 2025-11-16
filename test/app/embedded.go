@@ -180,21 +180,21 @@ func SetupEmbedded(t testing.TB, workerConf *worker.Config, proxyConf *proxy.Con
 		Address:     mainTs.URL,
 		Credentials: map[string]s3.CredentialsV4{user: generateCredentials()},
 		Provider:    "Other",
-		IsMain:      true,
+		Type:        dom.StorageTypeSource,
 	}
 
 	proxyConf.Storage.Storages["f1"] = s3.Storage{
 		Address:     f1Ts.URL,
 		Credentials: map[string]s3.CredentialsV4{user: generateCredentials()},
 		Provider:    "Other",
-		IsMain:      false,
+		Type:        dom.StorageTypeDestination,
 	}
 
 	proxyConf.Storage.Storages["f2"] = s3.Storage{
 		Address:     f2Ts.URL,
 		Credentials: map[string]s3.CredentialsV4{user: generateCredentials()},
 		Provider:    "Other",
-		IsMain:      false,
+		Type:        dom.StorageTypeDestination,
 	}
 
 	workerConf.Storage.Storages = proxyConf.Storage.Storages

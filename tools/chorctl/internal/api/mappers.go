@@ -29,19 +29,20 @@ import (
 )
 
 func StorageHeader() string {
-	return "NAME\tADDRESS\tPROVIDER\tUSERS"
+	return "NAME\tTYPE\tADDRESS\tPROVIDER\tUSERS"
 }
 
 func StorageRow(in *pb.Storage) string {
 	name := in.Name
-	if in.IsMain {
-		name += " [MAIN]"
+	storageType := in.Type
+	if storageType == "" {
+		storageType = "both"
 	}
 	var users []string
 	for _, c := range in.Credentials {
 		users = append(users, c.Alias)
 	}
-	return fmt.Sprintf("%s\t%s\t%s\t%s", name, in.Address, in.Provider, strings.Join(users, ","))
+	return fmt.Sprintf("%s\t%s\t%s\t%s\t%s", name, strings.ToUpper(storageType), in.Address, in.Provider, strings.Join(users, ","))
 }
 
 func ReplHeader() string {

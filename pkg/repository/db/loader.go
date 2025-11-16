@@ -22,6 +22,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
+
+	"github.com/clyso/chorus/pkg/dom"
 )
 
 // ConfigLoader builds runtime configuration from a replicate job ID
@@ -49,20 +51,20 @@ type RuntimeConfig struct {
 
 // StorageConfig represents storage connection details for runtime
 type StorageConfig struct {
-	ID                    uuid.UUID `json:"id"`
-	Name                  string    `json:"name"`
-	Address               string    `json:"address"`
-	Provider              string    `json:"provider"`
-	IsMain                bool      `json:"is_main"`
-	IsSecure              bool      `json:"is_secure"`
-	DefaultRegion         string    `json:"default_region"`
-	HealthCheckIntervalMs int64     `json:"health_check_interval_ms"`
-	HealthCheckEnabled    bool      `json:"health_check_enabled"`
-	HttpTimeoutMs         int64     `json:"http_timeout_ms"`
-	RateLimitEnabled      bool      `json:"rate_limit_enabled"`
-	RateLimitRPM          int       `json:"rate_limit_rpm"`
-	AccessKeyID           string    `json:"access_key_id"`
-	SecretAccessKey       string    `json:"secret_access_key"`
+	ID                    uuid.UUID       `json:"id"`
+	Name                  string          `json:"name"`
+	Address               string          `json:"address"`
+	Provider              string          `json:"provider"`
+	Type                  dom.StorageType `json:"type"`
+	IsSecure              bool            `json:"is_secure"`
+	DefaultRegion         string          `json:"default_region"`
+	HealthCheckIntervalMs int64           `json:"health_check_interval_ms"`
+	HealthCheckEnabled    bool            `json:"health_check_enabled"`
+	HttpTimeoutMs         int64           `json:"http_timeout_ms"`
+	RateLimitEnabled      bool            `json:"rate_limit_enabled"`
+	RateLimitRPM          int             `json:"rate_limit_rpm"`
+	AccessKeyID           string          `json:"access_key_id"`
+	SecretAccessKey       string          `json:"secret_access_key"`
 }
 
 // NewConfigLoader creates a new config loader with caching
@@ -168,7 +170,7 @@ func (l *ConfigLoader) storageToConfig(storage *Storage) *StorageConfig {
 		Name:                  storage.Name,
 		Address:               storage.Address,
 		Provider:              storage.Provider,
-		IsMain:                storage.IsMain,
+		Type:                  storage.Type,
 		IsSecure:              storage.IsSecure,
 		DefaultRegion:         storage.DefaultRegion,
 		HealthCheckIntervalMs: storage.HealthCheckIntervalMs,

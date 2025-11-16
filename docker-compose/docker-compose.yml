@@ -31,7 +31,7 @@ services:
       retries: 10
       start_period: 80s
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
       - ../pkg/repository/db/scripts/setup-db.sql:/docker-entrypoint-initdb.d/init.sql
 
   # Chorus components

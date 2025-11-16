@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 
 	appdb "github.com/clyso/chorus/pkg/db"
+	"github.com/clyso/chorus/pkg/dom"
 	"github.com/clyso/chorus/pkg/log"
 	repodb "github.com/clyso/chorus/pkg/repository/db"
 )
@@ -62,7 +63,7 @@ func TestDBLoader_Integration(t *testing.T) {
 		Name:            "it-from-storage",
 		Address:         "http://localhost:9000",
 		Provider:        "minio",
-		IsMain:          true,
+		Type:            dom.StorageTypeSource,
 		IsSecure:        false,
 		DefaultRegion:   "us-east-1",
 		ProjectID:       projectID,
@@ -74,7 +75,7 @@ func TestDBLoader_Integration(t *testing.T) {
 		Name:            "it-to-storage",
 		Address:         "http://localhost:9001",
 		Provider:        "minio",
-		IsMain:          false,
+		Type:            dom.StorageTypeDestination,
 		IsSecure:        false,
 		DefaultRegion:   "us-east-1",
 		ProjectID:       projectID,

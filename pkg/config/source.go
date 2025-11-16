@@ -41,7 +41,7 @@ type Storage struct {
 	Name                  string `json:"name"`
 	Address               string `json:"address"`
 	Provider              string `json:"provider"`
-	IsMain                bool   `json:"is_main"`
+	Type                  string `json:"type"`
 	IsSecure              bool   `json:"is_secure"`
 	DefaultRegion         string `json:"default_region"`
 	HealthCheckIntervalMs int64  `json:"health_check_interval_ms"`

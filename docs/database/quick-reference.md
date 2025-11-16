@@ -160,7 +160,7 @@ type Storage struct {
     ProjectID             uuid.UUID `gorm:"not null;index"`
     Address               string    `gorm:"not null"`
     Provider              string    `gorm:"not null"`
-    IsMain                bool      `gorm:"default:false"`
+    Type                  string    `gorm:"size:64;default:'both'"`
     IsSecure              bool      `gorm:"default:true"`
     DefaultRegion         string    `gorm:"not null"`
     HealthCheckIntervalMs int64     `gorm:"default:10000"`

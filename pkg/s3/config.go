@@ -36,13 +36,16 @@ type StorageConfig struct {
 	Storages      map[string]Storage `yaml:"storages"`
 
 	storageList []string
+	sourceList  []string
+	destList    []string
 }
 
 type Storage struct {
 	Address             string                   `yaml:"address"`
 	Credentials         map[string]CredentialsV4 `yaml:"credentials"`
 	Provider            string                   `yaml:"provider"`
-	IsMain              bool                     `yaml:"isMain"`
+	Type                dom.StorageType          `yaml:"type"`
+	DeprecatedIsMain    *bool                    `yaml:"isMain,omitempty"`
 	HealthCheckInterval time.Duration            `yaml:"healthCheckInterval"`
 	HealthCheckEnabled  bool                     `yaml:"healthCheckEnabled"`
 	HttpTimeout         time.Duration            `yaml:"httpTimeout"`
@@ -77,17 +80,25 @@ func (s *StorageConfig) StorageList() []string {
 }
 
 func (s *StorageConfig) Main() string {
-	if len(s.storageList) == 0 {
+	if len(s.sourceList) == 0 {
 		return ""
 	}
-	return s.storageList[0]
+	return s.sourceList[0]
 }
 
 func (s *StorageConfig) Followers() []string {
-	if len(s.storageList) == 0 {
+	if len(s.destList) == 0 {
 		return nil
 	}
-	return s.storageList[1:]
+	main := s.Main()
+	followers := make([]string, 0, len(s.destList))
+	for _, name := range s.destList {
+		if name == main {
+			continue
+		}
+		followers = append(followers, name)
+	}
+	return followers
 }
 
 func (s *Storage) CredentialList() []string {
@@ -98,9 +109,12 @@ func (s *StorageConfig) Init() error {
 	if len(s.Storages) == 0 {
 		return fmt.Errorf("app config: empty storages config")
 	}
-	hasMain := false
+	hasSource := false
+	hasDestination := false
 	users := map[string]struct{}{}
 	storList := make([]string, 0, len(s.Storages))
+	sourceList := make([]string, 0, len(s.Storages))
+	destList := make([]string, 0, len(s.Storages))
 	for name, storage := range s.Storages {
 		if len(storage.Credentials) == 0 {
 			return fmt.Errorf("%w: app config: storage %q credentials not set", dom.ErrInvalidStorageConfig, name)
@@ -133,11 +147,32 @@ func (s *StorageConfig) Init() error {
 			}
 		}
 
-		if storage.IsMain && hasMain {
-			return fmt.Errorf("%w: app config: multiple main storages not allowed", dom.ErrInvalidStorageConfig)
+		if storage.Type == "" {
+			if storage.DeprecatedIsMain != nil {
+				if *storage.DeprecatedIsMain {
+					storage.Type = dom.StorageTypeSource
+				} else {
+					storage.Type = dom.StorageTypeDestination
+				}
+			} else {
+				storage.Type = dom.StorageTypeBoth
+			}
 		}
-		if storage.IsMain {
-			hasMain = true
+		if !storage.Type.Valid() {
+			return fmt.Errorf("%w: app config: storage %q has invalid type %q", dom.ErrInvalidStorageConfig, name, storage.Type)
+		}
+		switch storage.Type {
+		case dom.StorageTypeSource:
+			sourceList = append(sourceList, name)
+			hasSource = true
+		case dom.StorageTypeDestination:
+			destList = append(destList, name)
+			hasDestination = true
+		case dom.StorageTypeBoth:
+			sourceList = append(sourceList, name)
+			destList = append(destList, name)
+			hasSource = true
+			hasDestination = true
 		}
 
 		if storage.HealthCheckInterval == 0 {
@@ -174,22 +209,22 @@ func (s *StorageConfig) Init() error {
 		if _, err := url.ParseRequestURI(storage.Address); err != nil {
 			return fmt.Errorf("%w: invalid storage address", err)
 		}
+		storage.DeprecatedIsMain = nil
 		s.Storages[name] = storage
 		storList = append(storList, name)
 	}
-	if !hasMain {
-		return fmt.Errorf("%w: app config: main storage is not set", dom.ErrInvalidStorageConfig)
+	if !hasSource {
+		return fmt.Errorf("%w: app config: at least one source storage is required", dom.ErrInvalidStorageConfig)
 	}
-	sort.Slice(storList, func(i, j int) bool {
-		if s.Storages[storList[i]].IsMain {
-			return true
-		}
-		if s.Storages[storList[j]].IsMain {
-			return false
-		}
-		return storList[i] < storList[j]
-	})
+	if !hasDestination {
+		return fmt.Errorf("%w: app config: at least one destination storage is required", dom.ErrInvalidStorageConfig)
+	}
+	sort.Strings(storList)
+	sort.Strings(sourceList)
+	sort.Strings(destList)
 	s.storageList = storList
+	s.sourceList = sourceList
+	s.destList = destList
 
 	return nil
 }

@@ -16,26 +16,26 @@ package db
 
 import (
 	"github.com/google/uuid"
+
+	"github.com/clyso/chorus/pkg/dom"
 )
 
-// Storage represents a storage configuration persisted in DB.
-// Mirrors the control-plane schema; table name is "storage".
 type Storage struct {
-	ID                    uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	Name                  string    `gorm:"size:255;not null" json:"name"`
-	Address               string    `gorm:"size:1024;not null" json:"address"`
-	Provider              string    `gorm:"size:64;not null" json:"provider"`
-	IsMain                bool      `json:"is_main"`
-	IsSecure              bool      `json:"is_secure"`
-	DefaultRegion         string    `gorm:"size:128" json:"default_region"`
-	HealthCheckIntervalMs int64     `json:"health_check_interval_ms"`
-	HealthCheckEnabled    bool      `json:"health_check_enabled"`
-	HttpTimeoutMs         int64     `json:"http_timeout_ms"`
-	RateLimitEnabled      bool      `json:"rate_limit_enabled"`
-	RateLimitRPM          int       `json:"rate_limit_rpm"`
-	ProjectID             uuid.UUID `gorm:"type:uuid;index;not null" json:"project_id"`
-	AccessKeyID           string    `gorm:"size:255;not null" json:"access_key_id"`
-	SecretAccessKey       string    `gorm:"size:255;not null" json:"secret_access_key"`
+	ID                    uuid.UUID       `gorm:"type:uuid;primaryKey" json:"id"`
+	Name                  string          `gorm:"size:255;not null" json:"name"`
+	Address               string          `gorm:"size:1024;not null" json:"address"`
+	Provider              string          `gorm:"size:64;not null" json:"provider"`
+	Type                  dom.StorageType `gorm:"size:64;not null;default:'both'" json:"type"`
+	IsSecure              bool            `json:"is_secure"`
+	DefaultRegion         string          `gorm:"size:128" json:"default_region"`
+	HealthCheckIntervalMs int64           `json:"health_check_interval_ms"`
+	HealthCheckEnabled    bool            `json:"health_check_enabled"`
+	HttpTimeoutMs         int64           `json:"http_timeout_ms"`
+	RateLimitEnabled      bool            `json:"rate_limit_enabled"`
+	RateLimitRPM          int             `json:"rate_limit_rpm"`
+	ProjectID             uuid.UUID       `gorm:"type:uuid;index;not null" json:"project_id"`
+	AccessKeyID           string          `gorm:"size:255;not null" json:"access_key_id"`
+	SecretAccessKey       string          `gorm:"size:255;not null" json:"secret_access_key"`
 }
 
 func (Storage) TableName() string { return "storage" }

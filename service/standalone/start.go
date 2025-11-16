@@ -241,8 +241,12 @@ func printStorages(fake map[string]int, conf *s3.StorageConfig) string {
 			f = "[\u001B[33mFAKE\u001B[0m] "
 		}
 		m := ""
-		if stor.IsMain {
-			m = " < \u001B[94mMAIN\u001B[0m"
+		// Show type indicator: source storages are typically "main" for display purposes
+		switch stor.Type {
+		case dom.StorageTypeSource, dom.StorageTypeBoth:
+			m = fmt.Sprintf(" < \u001B[94m%s\u001B[0m", strings.ToUpper(string(stor.Type)))
+		case dom.StorageTypeDestination:
+			m = fmt.Sprintf(" < \u001B[96m%s\u001B[0m", strings.ToUpper(string(stor.Type)))
 		}
 		res = append(res, fmt.Sprintf(" - %s%s: %s%s", f, name, stor.Address, m))
 	}

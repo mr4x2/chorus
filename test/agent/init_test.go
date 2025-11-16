@@ -78,7 +78,7 @@ func TestMain(m *testing.M) {
 	//	Address:     f1Ts.URL,
 	//	Credentials: map[string]s3.CredentialsV4{user: generateCredentials()},
 	//	Provider:    "Other",
-	//	IsMain:      false,
+	//	Type:        dom.StorageTypeDestination,
 	//}
 	//
 	//fmt.Println("f1 s3", f1Ts.URL)

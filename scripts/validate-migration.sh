@@ -57,7 +57,7 @@ else
             name,
             address,
             provider,
-            is_main,
+            type,
             project_id
         FROM storage 
         ORDER BY name;

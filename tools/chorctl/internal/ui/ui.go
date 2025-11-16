@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -184,11 +185,18 @@ func (u *UI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd = tea.Println("err msg", u.err)
 	case storMsg:
 		u.storages = nil
+		u.main = nil
 		for _, stor := range msg.storages {
 			s := stor
-			if s.IsMain {
-				u.main = s
-				continue
+			storageType := strings.ToLower(s.Type)
+			if storageType == "" {
+				storageType = "both"
+			}
+			if storageType == "source" || storageType == "both" {
+				if u.main == nil {
+					u.main = s
+					continue
+				}
 			}
 			u.storages = append(u.storages, s)
 		}

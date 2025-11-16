@@ -17,10 +17,13 @@ package db
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
+
+	"github.com/clyso/chorus/pkg/dom"
 )
 
 type StorageRepository struct {
@@ -143,6 +146,24 @@ func (r *ReplicateJobRepository) UpdateStatusWithReason(ctx context.Context, id 
 
 func (r *ReplicateJobRepository) Create(ctx context.Context, job *ReplicateJob) error {
 	return r.db.ExecuteWithRetry(ctx, func(ctx context.Context) error {
+		// Load storage details if not preloaded
+		if job.FromStorage == nil || job.ToStorage == nil {
+			if err := r.db.GetDB().WithContext(ctx).Preload("FromStorage").Preload("ToStorage").First(job, "id = ?", job.ID).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+		}
+
+		// Validate storage types before creating job
+		if job.FromStorage != nil && job.ToStorage != nil {
+			// Validate from storage can be used as source
+			if job.FromStorage.Type != dom.StorageTypeSource && job.FromStorage.Type != dom.StorageTypeBoth {
+				return fmt.Errorf("from storage %s (type: %s) cannot be used as source", job.FromStorage.Name, job.FromStorage.Type)
+			}
+			// Validate to storage can be used as destination
+			if job.ToStorage.Type != dom.StorageTypeDestination && job.ToStorage.Type != dom.StorageTypeBoth {
+				return fmt.Errorf("to storage %s (type: %s) cannot be used as destination", job.ToStorage.Name, job.ToStorage.Type)
+			}
+		}
 		return r.db.GetDB().WithContext(ctx).Create(job).Error
 	})
 }

@@ -196,7 +196,7 @@ var _ = BeforeSuite(func() {
 						},
 					},
 					Provider: CMinioProvider,
-					IsMain:   true,
+					Type:     dom.StorageTypeSource,
 				},
 				CStorage2Key: {
 					Address: fmt.Sprintf("http://%s", minioS3Endpoint),
@@ -207,7 +207,7 @@ var _ = BeforeSuite(func() {
 						},
 					},
 					Provider: CMinioProvider,
-					IsMain:   false,
+					Type:     dom.StorageTypeDestination,
 				},
 			},
 		},

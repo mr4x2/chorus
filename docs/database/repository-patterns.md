@@ -33,7 +33,7 @@ type Storage struct {
     ProjectID             uuid.UUID `gorm:"type:uuid;not null;index"`
     Address               string    `gorm:"type:varchar(500);not null"`
     Provider              string    `gorm:"type:varchar(100);not null"`
-    IsMain                bool      `gorm:"not null;default:false"`
+    Type                  string    `gorm:"type:varchar(64);not null;default:'both'"`
     IsSecure              bool      `gorm:"not null;default:true"`
     DefaultRegion         string    `gorm:"type:varchar(100);not null"`
     HealthCheckIntervalMs int64     `gorm:"not null;default:10000"`
@@ -55,7 +55,7 @@ type Storage struct {
 - **ProjectID**: Associated project identifier
 - **Address**: S3 endpoint URL (e.g., `s3.amazonaws.com`)
 - **Provider**: Storage provider type (`AWS`, `Ceph`, `Minio`, etc.)
-- **IsMain**: Whether this is the primary storage for the project
+- **Type**: Storage role for replication (`source`, `destination`, `both`)
 - **IsSecure**: Whether to use HTTPS/TLS
 - **DefaultRegion**: Default AWS region for operations
 - **HealthCheckIntervalMs**: Health check frequency in milliseconds
@@ -157,7 +157,7 @@ CREATE TABLE storage (
     project_id UUID NOT NULL,
     address VARCHAR(500) NOT NULL,
     provider VARCHAR(100) NOT NULL,
-    is_main BOOLEAN NOT NULL DEFAULT FALSE,
+    type VARCHAR(64) NOT NULL DEFAULT 'both',
     is_secure BOOLEAN NOT NULL DEFAULT TRUE,
     default_region VARCHAR(100) NOT NULL,
     health_check_interval_ms BIGINT NOT NULL DEFAULT 10000,
@@ -220,7 +220,7 @@ storage := &db.Storage{
     ProjectID:      projectID,
     Address:        "s3.amazonaws.com",
     Provider:       "AWS",
-    IsMain:         true,
+    Type:           "source",
     DefaultRegion:  "us-east-1",
     AccessKeyID:    "AKIA...",
     SecretAccessKey: "secret...",
